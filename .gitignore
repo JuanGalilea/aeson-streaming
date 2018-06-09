@@ -1,0 +1,4 @@
+/.stack-work/
+/TAGS
+/aeson-streaming.cabal
+/.dir-locals.el

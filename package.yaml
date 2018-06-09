@@ -1,0 +1,39 @@
+name: aeson-streaming
+version: 0.0.0.0
+license: PublicDomain
+
+ghc-options: -Wall
+
+dependencies:
+  - base
+  - aeson
+  - attoparsec
+  - bytestring
+  - text
+  - scientific
+  - unordered-containers
+  - vector
+
+flags:
+  build-examples:
+    manual: true
+    default: false
+
+library:
+  source-dirs: src
+
+executables:
+  aeson-streaming-examples:
+    when:
+      - condition: flag(build-examples)
+        then:
+          buildable: true
+        else:
+          buildable: false
+    source-dirs: examples
+    main: Main.hs
+    dependencies:
+      - conduit
+      - conduit-extra
+      - aeson-streaming
+    ghc-options: -rtsopts
