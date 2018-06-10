@@ -22,6 +22,15 @@ flags:
 library:
   source-dirs: src
 
+tests:
+  tasty:
+    source-dirs: test
+    main: Main.hs
+    dependencies:
+      - tasty
+      - tasty-hunit
+      - aeson-streaming
+
 executables:
   aeson-streaming-examples:
     when:

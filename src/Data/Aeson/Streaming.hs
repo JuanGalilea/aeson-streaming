@@ -226,15 +226,15 @@ decodeValue' p =
 
 -- | Parse the rest of the current object into an `A.Object`.
 parseRestOfObject :: NextParser ('InObject p) -> Parser (NextParser p, A.Object)
-parseRestOfObject p0 = go p0 HM.empty
+parseRestOfObject p0 = go p0 []
   where
     go p acc =
       p >>= \case
         Right (k, pr) -> do
           (p', v) <- parseValue pr
-          go p' (HM.insert k v acc)
+          go p' ((k, v) : acc)
         Left p' ->
-          pure (p', acc)
+          pure (p', HM.fromList acc)
 
 -- | Parse the rest of the current array into an `A.Array`.
 parseRestOfArray :: NextParser ('InArray p) -> Parser (NextParser p, A.Array)
