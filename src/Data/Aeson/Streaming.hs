@@ -242,26 +242,33 @@ decodeValue' p =
     (_, A.Error s) -> fail s
     (p', A.Success v) -> pure (p', v)
 
--- | Parse the rest of the current object into an `A.Object`.
-parseRestOfObject :: NextParser ('In 'Object p) -> Parser (NextParser p, A.Object)
-parseRestOfObject p0 = go p0 []
+class Sufficient (c :: Compound) where
+  type Interesting c
+  interest :: Index c -> A.Value -> Interesting c
+
+instance Sufficient 'Object where
+  type Interesting 'Object = (Text, A.Value)
+  interest k v = (k, v)
+
+instance Sufficient 'Array where
+  type Interesting 'Array = A.Value
+  interest _ v = v
+
+parseRestOfCompound :: Sufficient c => ([Interesting c] -> r) -> NextParser ('In c p) -> Parser (NextParser p, r)
+parseRestOfCompound complete p0 = go p0 []
   where
     go p acc =
       p >>= \case
         Element k pr -> do
           (p', v) <- parseValue pr
-          go p' ((k, v) : acc)
+          go p' (interest k v : acc)
         End p' ->
-          pure (p', HM.fromList acc)
+          pure (p', complete acc)
+
+-- | Parse the rest of the current object into an `A.Object`.
+parseRestOfObject :: NextParser ('In 'Object p) -> Parser (NextParser p, A.Object)
+parseRestOfObject = parseRestOfCompound HM.fromList
 
 -- | Parse the rest of the current array into an `A.Array`.
 parseRestOfArray :: NextParser ('In 'Array p) -> Parser (NextParser p, A.Array)
-parseRestOfArray p0 = go p0 []
-  where
-    go p acc =
-      p >>= \case
-        Element _ pr -> do
-          (p', v) <- parseValue pr
-          go p' (v : acc)
-        End p' ->
-          pure (p', V.fromList $ reverse acc)
+parseRestOfArray = parseRestOfCompound (V.fromList . reverse)
