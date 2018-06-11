@@ -45,4 +45,6 @@ executables:
       - conduit
       - conduit-extra
       - aeson-streaming
+      - transformers
+      - mtl
     ghc-options: -rtsopts

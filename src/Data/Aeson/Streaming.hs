@@ -156,13 +156,18 @@ root :: Parser (ParseResult 'Root)
 root = nested ()
 
 -- | Skip the rest of current value.  This is a no-op for atoms, and
--- consumes the rest of the current object or array otherwise.
+-- consumes the rest of the current object or array otherwise.  Note
+-- that this will load the whole of the skipped value into memory, as
+-- Attoparsec has no way to know that the parser will do no
+-- backtracking.
 skipValue :: ParseResult p -> Parser (NextParser p)
 skipValue (ArrayResult p) = skipRestOfCompound p
 skipValue (ObjectResult p) = skipRestOfCompound p
 skipValue (AtomicResult p _) = pure p
 
--- | Skip the rest of the current array
+-- | Skip the rest of the current array or object.  Note that this
+-- will load the whole of the skipped value into memory, as Attoparsec
+-- has no way to know that the parser will do no backtracking.
 skipRestOfCompound :: NextParser ('In c p) -> Parser (NextParser p)
 skipRestOfCompound = go
   where
