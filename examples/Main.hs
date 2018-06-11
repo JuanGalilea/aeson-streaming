@@ -1,15 +1,16 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE KindSignatures #-}
 
 module Main where
 
 import System.Environment (getArgs)
 import Conduit
-import Control.Monad
 import Data.Conduit.Attoparsec
 import Data.Aeson (Value)
 import Data.Aeson.Streaming
@@ -20,15 +21,15 @@ import Data.ByteString (ByteString)
 import Data.Semigroup ((<>))
 
 stringElements :: (MonadThrow m)
-               => NextParser ('InArray p)
+               => NextParser ('In 'Array p)
                -> ConduitT ByteString Text m (NextParser p)
 stringElements p =
   sinkParser p >>= \case
-    Right (StringResult p' element) ->
+    Element _ (StringResult p' element) ->
       do
         yield element
         stringElements p'
-    Left p' ->
+    End p' ->
       return p'
     _ ->
       fail "found a non-string in the array"
@@ -43,6 +44,15 @@ stringArray =
 tshow :: (Show a) => a -> Text
 tshow = T.pack . show
 
+class StringableIndex (c :: Compound) where
+  sIdx :: Index c -> Text
+
+instance StringableIndex 'Object where
+  sIdx = id
+
+instance StringableIndex 'Array where
+  sIdx = tshow
+
 type JsonExplode m a = ConduitT ByteString ([Text], Value) m a
 jsonExplode :: forall m. (MonadThrow m)
             => JsonExplode m ()
@@ -51,17 +61,14 @@ jsonExplode = sinkParser root >>= step pure []
     step :: (NextParser p -> JsonExplode m a) -> [Text] -> ParseResult p -> JsonExplode m a
     step next path result =
       next =<< case result of
-                 ArrayResult np -> loopArray path 0 np
-                 ObjectResult np -> loopObject path np
+                 ArrayResult np -> loopCompound path np
+                 ObjectResult np -> loopCompound path np
                  AtomicResult np v -> np <$ yield (path, v)
-    loopArray :: [Text] -> Int -> NextParser ('InArray p) -> JsonExplode m (NextParser p)
-    loopArray l i =
-      either pure (step (loopArray l (i+1)) (tshow i : l)) <=< sinkParser
-    loopObject :: [Text] -> NextParser ('InObject p) -> JsonExplode m (NextParser p)
-    loopObject l p =
+    loopCompound :: (StringableIndex c) => [Text] -> NextParser ('In c p) -> JsonExplode m (NextParser p)
+    loopCompound l p =
       sinkParser p >>= \case
-        Right (field, result) -> step (loopObject l) (field : l) result
-        Left np -> pure np
+        Element idx result -> step (loopCompound l) (sIdx idx : l) result
+        End np -> pure np
 
 main :: IO ()
 main =

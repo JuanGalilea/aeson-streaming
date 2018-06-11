@@ -1,25 +1,28 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Data.Aeson.Streaming (
   Path(..)
 , NextParser
 , ParseResult(.., AtomicResult)
+, Compound(..)
+, Element(..)
+, Index
 , isCompound
 , isAtom
 , atom
 , root
 , skipValue
-, skipRestOfArray
-, skipRestOfObject
+, skipRestOfCompound
 , parseValue
 , decodeValue
 , decodeValue'
@@ -50,14 +53,29 @@ import qualified Data.Vector as V
 #define C_n 110
 #define C_t 116
 
+-- | A data type used as an index for the different types of compounds.
+data Compound = Array | Object
+
 -- | JSON values are nested arrays and objects.  This is a type-level
 -- list from the current point in parsing to the root.
 data Path = Root
-          -- ^ At the top level; there will be no more after the first value read.
-          | InArray Path
-          -- ^ In an array.  It is possible that there will be more values.
-          | InObject Path
-          -- ^ In an object.  It is possible there will be more key/value pairs.
+          -- ^ The top level
+          | In Compound Path
+          -- ^ The path to the current nested level
+
+-- | The index type of a JSON compound
+type family Index (c :: Compound) = t | t -> c where
+   Index 'Array = Int
+   Index 'Object = Text
+
+-- | When parsing nested values, this type indicates whether a new
+-- element has been parsed or if the end of the compound has arrived.
+data Element (c :: Compound) (p :: Path)
+  = Element !(Index c) (ParseResult ('In c p))
+  -- ^ There is a new element with the provided index.
+  | End (NextParser p)
+  -- ^ There are no more elements.  The parser returned will continue
+  -- with the container.
 
 -- | When we're done reading an object, whether there is more to parse
 -- depends on the current path to the root.  This is a function from
@@ -65,35 +83,28 @@ data Path = Root
 type family NextParser (p :: Path) = r | r -> p where
   NextParser 'Root = ()
   -- x^ After the root value, there is nothing more to parse.
-  NextParser ('InArray p) = Parser (Either (NextParser p) (ParseResult ('InArray p)))
-  -- x^ If we're in an array, the next thing is either the end of the
-  -- array (Left, containing the parser to continue reading the
-  -- enclosing datum, if any) or more data (Right, containing a parser
-  -- to continue reading the current array)
-  NextParser ('InObject p) = Parser (Either (NextParser p) (Text, ParseResult ('InObject p)))
-  -- x^ IF we're in an object, the next thing is either the end of the
-  -- object (Left, containing the parser to continue reading the
-  -- enclosing datum, if any) or more data (Right, containing a parser
-  -- that will produce the next item's key and value)
+  NextParser ('In c p) = Parser (Element c p)
+  -- x^ After seeing the start of a compound, elements of that
+  -- compound can be parsed.
 
 -- | One step of parsing can produce either one of the atomic JSON
 -- types (null, string, boolean, number) or a parser that can consume
 -- one of the compound types (array, object)
-data ParseResult (p :: Path) where
-  -- | We've seen a @[@ and have a parser for producing the elements
+data ParseResult (p :: Path)
+  = ArrayResult (NextParser ('In 'Array p))
+  -- ^ We've seen a @[@ and have a parser for producing the elements
   -- of the array.
-  ArrayResult :: NextParser ('InArray p) -> ParseResult p
-  -- | We've seen a @{@ and have a parser for producing the elements
+  | ObjectResult (NextParser ('In 'Object p))
+  -- ^ We've seen a @{@ and have a parser for producing the elements
   -- of the array.
-  ObjectResult :: NextParser ('InObject p) -> ParseResult p
-  -- | We've seen and consumed a @null@
-  NullResult :: NextParser p -> ParseResult p
-  -- | We've seen an consumed a string
-  StringResult :: NextParser p -> !Text -> ParseResult p
-  -- | We've seen and cosumed a boolean
-  BoolResult :: NextParser p -> !Bool -> ParseResult p
-  -- | We've seen and consumed a number
-  NumberResult :: NextParser p -> !Scientific -> ParseResult p
+  | NullResult (NextParser p)
+  -- ^ We've seen and consumed a @null@
+  | StringResult (NextParser p) !Text
+  -- ^ We've seen an consumed a string
+  | BoolResult (NextParser p) !Bool
+  -- ^ We've seen and cosumed a boolean
+  | NumberResult (NextParser p) !Scientific
+  -- ^ We've seen and consumed a number
 
 -- | True if the result is the start of an array or object, otherwise
 -- false.
@@ -131,27 +142,18 @@ root = nested ()
 -- | Skip the rest of current value.  This is a no-op for atoms, and
 -- consumes the rest of the current object or array otherwise.
 skipValue :: ParseResult p -> Parser (NextParser p)
-skipValue (ArrayResult p) = skipRestOfArray p
-skipValue (ObjectResult p) = skipRestOfObject p
+skipValue (ArrayResult p) = skipRestOfCompound p
+skipValue (ObjectResult p) = skipRestOfCompound p
 skipValue (AtomicResult p _) = pure p
 
 -- | Skip the rest of the current array
-skipRestOfArray :: NextParser ('InArray p) -> Parser (NextParser p)
-skipRestOfArray = go
+skipRestOfCompound :: NextParser ('In c p) -> Parser (NextParser p)
+skipRestOfCompound = go
   where
     go p =
       p >>= \case
-        Left n -> pure n
-        Right r -> skipValue r >>= go
-
--- | Skip the rest of the current object
-skipRestOfObject :: NextParser ('InObject d) -> Parser (NextParser d)
-skipRestOfObject = go
-  where
-    go p =
-      p >>= \case
-        Left n -> pure n
-        Right (_, r) -> go =<< skipValue r
+        End n -> pure n
+        Element _ r -> skipValue r >>= go
 
 broken :: Parser a
 broken = fail "not a valid json value"
@@ -169,39 +171,39 @@ nested cont = do
     w | w >= C_0 && w <= C_9 || w == DASH -> NumberResult cont <$> A.scientific
     _ -> broken
 
-array :: NextParser p -> Parser (NextParser ('InArray p))
+array :: NextParser p -> Parser (NextParser ('In 'Array p))
 array cont = do
   skipSpace
   AP.peekWord8' >>= \case
-    CLOSE_SQUARE -> pure (Left cont) <$ AP.anyWord8
-    _ -> pure (Right <$> nested (restOfArray cont))
+    CLOSE_SQUARE -> pure (End cont) <$ AP.anyWord8
+    _ -> pure (Element 0 <$> nested (restOfArray 1 cont))
 
-restOfArray :: NextParser p -> NextParser ('InArray p)
-restOfArray cont = do
+restOfArray :: Int -> NextParser p -> NextParser ('In 'Array p)
+restOfArray !i cont = do
   skipSpace
   AP.anyWord8 >>= \case
-    CLOSE_SQUARE -> pure (Left cont)
-    COMMA -> Right <$> nested (restOfArray cont)
+    CLOSE_SQUARE -> pure (End cont)
+    COMMA -> Element i <$> nested (restOfArray (i+1) cont)
     _ -> broken
 
-object :: NextParser p -> Parser (NextParser ('InObject p))
+object :: NextParser p -> Parser (NextParser ('In 'Object p))
 object cont = do
   skipSpace
   AP.peekWord8' >>= \case
-    CLOSE_CURLY -> pure (pure (Left cont))
-    _ -> pure (Right <$> field cont)
+    CLOSE_CURLY -> pure (pure (End cont))
+    _ -> pure (field cont)
 
-restOfObject :: NextParser p -> NextParser ('InObject p)
+restOfObject :: NextParser p -> NextParser ('In 'Object p)
 restOfObject cont = do
   skipSpace
   AP.anyWord8 >>= \case
-    CLOSE_CURLY -> pure (Left cont)
-    COMMA -> Right <$> (skipSpace *> field cont)
+    CLOSE_CURLY -> pure (End cont)
+    COMMA -> skipSpace *> field cont
     _ -> broken
 
-field :: NextParser p -> Parser (Text, ParseResult ('InObject p))
+field :: NextParser p -> Parser (Element 'Object p)
 field cont =
-  (,) <$> A.jstring <*> (skipSpace *> AP.word8 COLON *> nested (restOfObject cont))
+  Element <$> A.jstring <*> (skipSpace *> AP.word8 COLON *> nested (restOfObject cont))
 
 -- | Parse the whole of the current value from the current position.
 -- This consumes nothing if the current value is atomic.
@@ -225,25 +227,25 @@ decodeValue' p =
     (p', A.Success v) -> pure (p', v)
 
 -- | Parse the rest of the current object into an `A.Object`.
-parseRestOfObject :: NextParser ('InObject p) -> Parser (NextParser p, A.Object)
+parseRestOfObject :: NextParser ('In 'Object p) -> Parser (NextParser p, A.Object)
 parseRestOfObject p0 = go p0 []
   where
     go p acc =
       p >>= \case
-        Right (k, pr) -> do
+        Element k pr -> do
           (p', v) <- parseValue pr
           go p' ((k, v) : acc)
-        Left p' ->
+        End p' ->
           pure (p', HM.fromList acc)
 
 -- | Parse the rest of the current array into an `A.Array`.
-parseRestOfArray :: NextParser ('InArray p) -> Parser (NextParser p, A.Array)
+parseRestOfArray :: NextParser ('In 'Array p) -> Parser (NextParser p, A.Array)
 parseRestOfArray p0 = go p0 []
   where
     go p acc =
       p >>= \case
-        Right pr -> do
+        Element _ pr -> do
           (p', v) <- parseValue pr
           go p' (v : acc)
-        Left p' ->
+        End p' ->
           pure (p', V.fromList $ reverse acc)
