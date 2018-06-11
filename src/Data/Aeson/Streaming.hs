@@ -91,7 +91,7 @@ data Element (c :: Compound) (p :: Path)
   -- ^ There is a new element with the provided index.
   | End (NextParser p)
   -- ^ There are no more elements.  The parser returned will continue
-  -- with the container.
+  -- with the container's parent.
 
 -- | When we're done reading an object, whether there is more to parse
 -- depends on the current path to the root.  This is a function from
