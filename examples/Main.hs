@@ -5,7 +5,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PartialTypeSignatures #-}
-{-# LANGUAGE KindSignatures #-}
 
 module Main where
 
@@ -44,31 +43,30 @@ stringArray =
 tshow :: (Show a) => a -> Text
 tshow = T.pack . show
 
-class StringableIndex (c :: Compound) where
-  sIdx :: Index c -> Text
-
-instance StringableIndex 'Object where
-  sIdx = id
-
-instance StringableIndex 'Array where
-  sIdx = tshow
-
-type JsonExplode m a = ConduitT ByteString ([Text], Value) m a
+type JsonExplode m a = ConduitT ByteString ([PathComponent], Value) m a
 jsonExplode :: forall m. (MonadThrow m)
             => JsonExplode m ()
 jsonExplode = sinkParser root >>= step pure []
   where
-    step :: (NextParser p -> JsonExplode m a) -> [Text] -> ParseResult p -> JsonExplode m a
+    step :: (NextParser p -> JsonExplode m a) -> [PathComponent] -> ParseResult p -> JsonExplode m a
     step next path result =
       next =<< case result of
                  ArrayResult np -> loopCompound path np
                  ObjectResult np -> loopCompound path np
                  AtomicResult np v -> np <$ yield (path, v)
-    loopCompound :: (StringableIndex c) => [Text] -> NextParser ('In c p) -> JsonExplode m (NextParser p)
+    loopCompound :: (PathableIndex c) => [PathComponent] -> NextParser ('In c p) -> JsonExplode m (NextParser p)
     loopCompound l p =
       sinkParser p >>= \case
-        Element idx result -> step (loopCompound l) (sIdx idx : l) result
+        Element idx result -> step (loopCompound l) (pathComponent idx : l) result
         End np -> pure np
+
+renderPath :: [PathComponent] -> Text
+renderPath = mconcat . concatMap render . reverse
+  where
+    render (Offset i) = ["[", tshow i, "]"]
+    render (Field f) | isIdentifier f = [".", f]
+                     | otherwise = ["[", tshow f, "]"]
+    isIdentifier _ = True
 
 main :: IO ()
 main =
@@ -77,5 +75,5 @@ main =
                                            .| mapM_C T.putStrLn
     ["explode"] -> runConduit $ stdinC .| jsonExplode
                                        .| mapM_C (\(p, v) ->
-                                                    T.putStrLn $ T.intercalate "." (reverse p) <> tshow v)
+                                                    T.putStrLn $ renderPath p <> " : " <> tshow v)
     _ -> putStrLn "Unknoown command"
