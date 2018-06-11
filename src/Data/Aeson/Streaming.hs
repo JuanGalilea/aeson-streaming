@@ -72,6 +72,7 @@ type family Index (c :: Compound) = t | t -> c where
 
 -- | A generic path component
 data PathComponent = Offset !Int | Field !Text
+  deriving (Show, Read, Eq, Ord)
 
 class PathableIndex (c :: Compound) where
   -- | Promote an index of possibly partially unknown type to a path component
