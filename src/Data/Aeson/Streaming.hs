@@ -17,6 +17,8 @@ module Data.Aeson.Streaming (
 , Compound(..)
 , Element(..)
 , Index
+, PathComponent(..)
+, PathableIndex(..)
 , isCompound
 , isAtom
 , atom
@@ -67,6 +69,19 @@ data Path = Root
 type family Index (c :: Compound) = t | t -> c where
    Index 'Array = Int
    Index 'Object = Text
+
+-- | A generic path component
+data PathComponent = Offset !Int | Field !Text
+
+class PathableIndex (c :: Compound) where
+  -- | Promote an index of possibly partially unknown type to a path component
+  pathComponent :: Index c -> PathComponent
+
+instance PathableIndex 'Object where
+  pathComponent = Field
+
+instance PathableIndex 'Array where
+  pathComponent = Offset
 
 -- | When parsing nested values, this type indicates whether a new
 -- element has been parsed or if the end of the compound has arrived.
