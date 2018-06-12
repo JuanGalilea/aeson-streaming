@@ -184,20 +184,20 @@ nested cont = do
   skipSpace
   AP.peekWord8' >>= \case
     DOUBLE_QUOTE -> AP.anyWord8 *> (StringResult cont <$> A.jstring_)
-    OPEN_CURLY -> AP.anyWord8 *> (ObjectResult <$> object cont)
-    OPEN_SQUARE -> AP.anyWord8 *> (ArrayResult <$> array cont)
+    OPEN_CURLY -> ObjectResult (object cont) <$ AP.anyWord8
+    OPEN_SQUARE -> ArrayResult (array cont) <$ AP.anyWord8
     C_f -> BoolResult cont False <$ AP.string "false"
     C_t -> BoolResult cont True <$ AP.string "true"
     C_n -> NullResult cont <$ AP.string "null"
     w | w >= C_0 && w <= C_9 || w == DASH -> NumberResult cont <$> A.scientific
     _ -> broken
 
-array :: NextParser p -> Parser (NextParser ('In 'Array p))
+array :: NextParser p -> NextParser ('In 'Array p)
 array cont = do
   skipSpace
   AP.peekWord8' >>= \case
-    CLOSE_SQUARE -> pure (End cont) <$ AP.anyWord8
-    _ -> pure (Element 0 <$> nested (restOfArray 1 cont))
+    CLOSE_SQUARE -> End cont <$ AP.anyWord8
+    _ -> Element 0 <$> nested (restOfArray 1 cont)
 
 restOfArray :: Int -> NextParser p -> NextParser ('In 'Array p)
 restOfArray !i cont = do
@@ -207,12 +207,12 @@ restOfArray !i cont = do
     COMMA -> Element i <$> nested (restOfArray (i+1) cont)
     _ -> broken
 
-object :: NextParser p -> Parser (NextParser ('In 'Object p))
+object :: NextParser p -> NextParser ('In 'Object p)
 object cont = do
   skipSpace
   AP.peekWord8' >>= \case
-    CLOSE_CURLY -> pure (pure (End cont))
-    _ -> pure (field cont)
+    CLOSE_CURLY -> End cont <$ AP.anyWord8
+    _ -> field cont
 
 restOfObject :: NextParser p -> NextParser ('In 'Object p)
 restOfObject cont = do

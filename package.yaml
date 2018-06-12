@@ -29,6 +29,8 @@ tests:
     dependencies:
       - tasty
       - tasty-hunit
+      - tasty-hedgehog
+      - hedgehog
       - aeson-streaming
 
 executables:
