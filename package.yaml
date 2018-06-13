@@ -49,4 +49,5 @@ executables:
       - aeson-streaming
       - transformers
       - containers
+      - dlist
     ghc-options: -rtsopts
