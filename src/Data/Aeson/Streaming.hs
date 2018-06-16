@@ -6,7 +6,6 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE InstanceSigs #-}
 
@@ -48,20 +47,6 @@ import qualified Data.HashMap.Strict as HM
 import Data.Text (Text)
 import Data.Scientific (Scientific)
 import qualified Data.Vector as V
-
-#define CLOSE_CURLY 125
-#define CLOSE_SQUARE 93
-#define COLON 58
-#define COMMA 44
-#define DASH 45
-#define DOUBLE_QUOTE 34
-#define OPEN_CURLY 123
-#define OPEN_SQUARE 91
-#define C_0 48
-#define C_9 57
-#define C_f 102
-#define C_n 110
-#define C_t 116
 
 -- | A parser akin to an Attoparsec `AP.Parser`, but without
 -- backtracking capabilities, which allows it to discard its input as
