@@ -23,7 +23,7 @@ parseA :: ByteString -> Maybe Aeson.Value
 parseA = Aeson.decode
 
 parseS :: ByteString -> Maybe Aeson.Value
-parseS = AP.maybeResult . AP.parse parser
+parseS = AP.maybeResult . parseL parser
   where
     parser = do
       ((), result) <- parseValue =<< root
@@ -31,7 +31,7 @@ parseS = AP.maybeResult . AP.parse parser
 
 objectOrdering :: TestTree
 objectOrdering = testCase "Objects with duplicate keys select the same value" $
-  let json = "{\"hello\":\"there\",\"hello\":\"world\"}"
+  let json = "{ \"hello\" : \"there\", \"hello\" : \"world\" }"
   in parseA json @=? parseS json
 
 genValue :: Gen Aeson.Value

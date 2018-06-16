@@ -14,6 +14,7 @@ module Data.Aeson.Streaming (
   Path(..)
 , Parser
 , parse
+, parseL
 , NextParser
 , ParseResult(.., AtomicResult)
 , Compound(..)
@@ -39,7 +40,10 @@ import qualified Data.Aeson.Streaming.Internal as S
 import Data.Aeson.Streaming.Internal (Compound(..), Path(..), Index,
                                       PathComponent(..), PathableIndex(..))
 import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Attoparsec.ByteString as AP
+import qualified Data.Attoparsec.ByteString.Lazy as APL
 import qualified Data.HashMap.Strict as HM
 import Data.Text (Text)
 import Data.Scientific (Scientific)
@@ -64,9 +68,19 @@ import qualified Data.Vector as V
 -- it is used.
 newtype Parser a = Parser (ByteString -> AP.Result a)
 
--- | Apply a parser to a ByteString to start the parsing process.
+-- | Apply a parser to a `ByteString` to start the parsing process.
 parse :: Parser a -> ByteString -> AP.Result a
 parse (Parser f) = f
+
+-- | Apply a parser to a lazy `BSL.ByteString`.
+parseL :: Parser a -> BSL.ByteString -> APL.Result a
+parseL p = go (parse p) . BSL.toChunks
+  where go f [] = convert [] $ f BS.empty
+        go f (bs : bss) = convert bss $ f bs
+        convert bss (AP.Done bs r) = APL.Done (prepend bs bss) r
+        convert bss (AP.Fail bs a b) = APL.Fail (prepend bs bss) a b
+        convert bss (AP.Partial f') = go f' bss
+        prepend bs bss = BSL.fromChunks (bs : bss)
 
 instance Functor Parser where
   fmap f (Parser p) = Parser (fmap f . p)
