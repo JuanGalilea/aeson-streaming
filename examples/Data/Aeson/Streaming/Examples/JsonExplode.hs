@@ -7,12 +7,13 @@ module Data.Aeson.Streaming.Examples.JsonExplode (
 ) where
 
 import Conduit
-import Data.Conduit.Attoparsec (sinkParser)
 import Data.Aeson (Value)
 import Data.Aeson.Streaming
 import Data.ByteString (ByteString)
 import Data.DList (DList)
 import qualified Data.DList as DL
+
+import Data.Aeson.Streaming.Examples.Util.Conduit (sinkParser)
 
 type JsonExplode m a = ConduitT ByteString ([PathComponent], Value) m a
 

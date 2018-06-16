@@ -6,10 +6,11 @@ module Data.Aeson.Streaming.Examples.StringList (
 ) where
 
 import Conduit
-import Data.Conduit.Attoparsec (sinkParser)
 import Data.Aeson.Streaming
 import Data.ByteString (ByteString)
 import Data.Text (Text)
+
+import Data.Aeson.Streaming.Examples.Util.Conduit (sinkParser)
 
 -- Consume an array of strings, yielding each string downstream.
 stringArray :: (MonadThrow m)

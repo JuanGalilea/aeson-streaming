@@ -1,31 +1,40 @@
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE DataKinds #-}
 
 module Data.Aeson.Streaming.Examples.Util.Conduit (
-  skipRestOfCompound'
-, skipValue'
+  sinkParser
+, ParseError
 ) where
 
 import Conduit
-import Data.Conduit.Attoparsec (sinkParser)
 import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
+import Control.Monad
+import Data.Attoparsec.ByteString (IResult(..))
+import Control.Exception
+import Data.Typeable
+
 import Data.Aeson.Streaming
 
--- TODO: move this entire module into a library.
+-- TODO: move this module into a library.
 
-skipRestOfCompound' :: (MonadThrow m)
-                    => NextParser ('In c p)
-                    -> ConduitT ByteString x m (NextParser p)
-skipRestOfCompound' = go
+sinkParser :: MonadThrow m => Parser p -> ConduitT ByteString x m p
+sinkParser p = go (parse p)
   where
-    go p =
-      sinkParser p >>= \case
-        End n -> pure n
-        Element _ r -> skipValue' r >>= go
+    go parser =
+      await >>= \case
+        Just bs ->
+          case parser bs of
+            Done bs' r -> do
+              unless (BS.null bs') (leftover bs')
+              pure r
+            Fail x y z -> throwM (ParseError x y z)
+            Partial cont ->
+              go cont
+        Nothing ->
+          throwM EndOfInput
 
-skipValue' :: (MonadThrow m)
-           => ParseResult p
-           -> ConduitT ByteString x m (NextParser p)
-skipValue' (ObjectResult p) = skipRestOfCompound' p
-skipValue' (ArrayResult p) = skipRestOfCompound' p
-skipValue' (AtomicResult p _) = pure p
+data ParseError = ParseError ByteString [String] String
+                | EndOfInput
+                deriving (Show, Typeable)
+
+instance Exception ParseError

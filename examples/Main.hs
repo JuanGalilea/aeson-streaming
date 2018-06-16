@@ -10,16 +10,17 @@ module Main where
 
 import System.Environment (getArgs, getProgName)
 import Conduit
-import Data.Conduit.Attoparsec
 import qualified Data.Text.IO as T
 import Data.Semigroup ((<>))
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Control.Monad (forM_)
+import Control.Monad (forM_, void)
 import Data.List (intercalate)
 
+import Data.Aeson.Streaming
 import Data.Aeson.Streaming.Examples
 import Data.Aeson.Streaming.Examples.Util (renderPath, valueAsText, parsePath)
+import Data.Aeson.Streaming.Examples.Util.Conduit (sinkParser)
 
 commands :: Map String (String, [String] -> IO ())
 commands = Map.fromList [
@@ -34,16 +35,15 @@ commands = Map.fromList [
         runConduit $ stdinC .| jsonExplode
                             .| mapM_C (\(p, v) ->
                                          T.putStrLn $ renderPath p <> " : " <> valueAsText v))),
-  ("navigate-bad", (
-      "Read a JSON value from standard input, printing the value at the path given on the command line.  Uses linear memory.",
+  ("navigate", (
+      "Read a JSON value from standard input, printing the value at the path given on the command line.",
       \path ->
         runConduit $ stdinC .| (yield =<< sinkParser (navigate $ parsePath path) )
                             .| mapM_C (T.putStrLn . maybe "--not found--" valueAsText))),
-  ("navigate", (
-      "Read a JSON value from standard input, printing the value at the path given on the command line.  Uses more-or-less constant memory.",
-      \path ->
-        runConduit $ stdinC .| (yield =<< navigate' (parsePath path))
-                            .| mapM_C (T.putStrLn . maybe "--not found--" valueAsText)))
+  ("skip", (
+      "Skip over a JSON value from standard input, doing nothing with it at all.",
+      \_ ->
+        runConduit $ stdinC .| sinkParser (void (root >>= skipValue))))
   ]
 
 main :: IO ()
@@ -56,7 +56,7 @@ main =
     cmd : args ->
       case Map.lookup cmd commands of
         Just (_, f) -> f args
-        Nothing ->putStrLn "Unknown command"
+        Nothing -> putStrLn "Unknown command"
 
 showHelp :: IO ()
 showHelp =
