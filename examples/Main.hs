@@ -10,12 +10,14 @@ module Main where
 
 import System.Environment (getArgs, getProgName)
 import Conduit
+import Data.Text (Text)
 import qualified Data.Text.IO as T
 import Data.Semigroup ((<>))
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Control.Monad (forM_, void)
+import Control.Monad (forM_)
 import Data.List (intercalate)
+import Data.ByteString (ByteString)
 
 import Data.Aeson.Streaming
 import Data.Aeson.Streaming.Examples
@@ -27,24 +29,24 @@ commands = Map.fromList [
   ("string-list", (
       "Read an array of strings from standard input, printing each string",
       \_ ->
-        runConduit $ stdinC .| stringArray
-                            .| mapM_C T.putStrLn)),
+        runExample stringArray)),
   ("explode", (
       "Read a JSON value from standard input, printing the leaves with their paths",
       \_ ->
-        runConduit $ stdinC .| jsonExplode
-                            .| mapM_C (\(p, v) ->
-                                         T.putStrLn $ renderPath p <> " : " <> valueAsText v))),
+        runExample (jsonExplode .| mapC (\(p, v) ->
+                                           renderPath p <> " : " <> valueAsText v)))),
   ("navigate", (
       "Read a JSON value from standard input, printing the value at the path given on the command line.",
       \path ->
-        runConduit $ stdinC .| (yield =<< sinkParser (navigate $ parsePath path) )
-                            .| mapM_C (T.putStrLn . maybe "--not found--" valueAsText))),
+        runExample ((yield . maybe "--not found--" valueAsText) =<< sinkParser (navigate $ parsePath path)))),
   ("skip", (
       "Skip over a JSON value from standard input, doing nothing with it at all.",
       \_ ->
-        runConduit $ stdinC .| sinkParser (skipValue =<< root)))
+        runExample (sinkParser (skipValue =<< root))))
   ]
+
+runExample :: ConduitT ByteString Text IO () -> IO ()
+runExample c = runConduit $ stdinC .| c .| mapM_C T.putStrLn
 
 main :: IO ()
 main =
