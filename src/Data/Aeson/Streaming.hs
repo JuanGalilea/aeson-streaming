@@ -18,8 +18,6 @@ module Data.Aeson.Streaming (
 , Index
 , PathComponent(..)
 , PathableIndex(..)
-, isCompound
-, isAtom
 , atom
 , root
 , skipValue
@@ -125,17 +123,6 @@ data ParseResult (p :: Path)
   -- ^ We've seen and cosumed a boolean
   | NumberResult (NextParser p) !Scientific
   -- ^ We've seen and consumed a number
-
--- | True if the result is the start of an array or object, otherwise
--- false.
-isCompound :: ParseResult p -> Bool
-isCompound (ArrayResult _) = True
-isCompound (ObjectResult _) = True
-isCompound _ = False
-
--- | True if the result is an atomic value, otherwise false.
-isAtom :: ParseResult p -> Bool
-isAtom = not . isCompound
 
 -- | Match an atomic `ParseResult` as a `A.Value`.
 pattern AtomicResult :: NextParser p -> A.Value -> ParseResult p
