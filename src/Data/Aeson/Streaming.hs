@@ -192,7 +192,7 @@ skipRestOfCompound = go
     go p =
       p >>= \case
         End n -> pure n
-        Element _ r -> skipValue r >>= go
+        Element _ r -> go =<< skipValue r
 
 -- | Parse the whole of the current value from the current position.
 -- This consumes nothing if the current value is atomic.

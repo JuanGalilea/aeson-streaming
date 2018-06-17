@@ -43,7 +43,7 @@ commands = Map.fromList [
   ("skip", (
       "Skip over a JSON value from standard input, doing nothing with it at all.",
       \_ ->
-        runConduit $ stdinC .| sinkParser (void (root >>= skipValue))))
+        runConduit $ stdinC .| sinkParser (skipValue =<< root)))
   ]
 
 main :: IO ()
