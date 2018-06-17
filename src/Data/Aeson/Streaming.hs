@@ -31,6 +31,7 @@ module Data.Aeson.Streaming (
 , parseRestOfObject
 ) where
 
+import qualified Control.Monad.Fail as Fail
 import qualified Data.Aeson as A
 import qualified Data.Aeson.Streaming.Internal as S
 import Data.Aeson.Streaming.Internal (Compound(..), Path(..), Index,
@@ -75,6 +76,10 @@ instance Applicative Parser where
 
 instance Monad Parser where
   (Parser f) >>= next = Parser $ parseLoop (parse . next) f
+  fail = Fail.fail
+
+instance Fail.MonadFail Parser where
+  fail err = Parser $ AP.parse (fail err)
 
 parseLoop :: (i -> ByteString -> AP.Result r) -> (ByteString -> AP.Result i) -> ByteString -> AP.Result r
 parseLoop result = go
