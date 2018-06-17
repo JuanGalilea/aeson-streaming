@@ -190,8 +190,8 @@ skipRestOfCompound = go
   where
     go p =
       p >>= \case
-        End n -> pure n
         Element _ r -> go =<< skipValue r
+        End n -> pure n
 
 -- | Parse the whole of the current value from the current position.
 -- This consumes nothing if the current value is atomic.
@@ -211,8 +211,8 @@ decodeValue p = fmap A.fromJSON <$> parseValue p
 decodeValue' :: (A.FromJSON a) => ParseResult p -> Parser (NextParser p, a)
 decodeValue' p =
   decodeValue p >>= \case
-    (_, A.Error s) -> fail s
     (p', A.Success v) -> pure (p', v)
+    (_, A.Error s) -> fail s
 
 parseRestOfCompound :: (Index c -> A.Value -> e) -> ([e] -> r) -> NextParser ('In c p) -> Parser (NextParser p, r)
 parseRestOfCompound interest complete p0 = go p0 []
