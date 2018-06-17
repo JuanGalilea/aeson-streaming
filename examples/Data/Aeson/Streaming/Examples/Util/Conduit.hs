@@ -8,7 +8,6 @@ module Data.Aeson.Streaming.Examples.Util.Conduit (
 import Conduit
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import Data.Maybe (fromMaybe)
 import Control.Monad
 import Data.Attoparsec.ByteString (IResult(..))
 import Control.Exception
