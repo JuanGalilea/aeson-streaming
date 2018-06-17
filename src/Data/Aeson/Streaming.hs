@@ -73,25 +73,24 @@ instance Functor Parser where
 instance Applicative Parser where
   pure a = Parser (flip AP.Done a)
   (<*>) :: forall a b. Parser (a->b) -> Parser a -> Parser b
-  Parser f0 <*> Parser r = Parser $ go f0
+  Parser f <*> Parser r = Parser (parseLoop result f)
     where
-      go :: (ByteString -> AP.Result (a -> b)) -> ByteString -> AP.Result b
-      go f bs =
-        case f bs of
-          AP.Done leftover f' -> f' <$> r leftover
-          AP.Fail x y z -> AP.Fail x y z
-          AP.Partial f' -> AP.Partial (go f')
+      result leftover f' = f' <$> r leftover
 
 instance Monad Parser where
   (>>=) :: forall a b. Parser a -> (a -> Parser b) -> Parser b
-  (Parser a) >>= f = Parser (go a)
+  (Parser f) >>= next = Parser (parseLoop result f)
     where
-      go :: (ByteString -> AP.Result a) -> ByteString -> AP.Result b
-      go p bs =
-        case p bs of
-          AP.Done leftover a' -> parse (f a') leftover
-          AP.Fail x y z -> AP.Fail x y z
-          AP.Partial p' -> AP.Partial (go p')
+      result leftover a = parse (next a) leftover
+
+parseLoop :: (ByteString -> i -> AP.Result r) -> (ByteString -> AP.Result i) -> ByteString -> AP.Result r
+parseLoop result = go
+  where
+    go f bs =
+      case f bs of
+        AP.Done leftover i -> result leftover i
+        AP.Fail x y z -> AP.Fail x y z
+        AP.Partial f' -> AP.Partial (go f')
 
 -- | When parsing nested values, this type indicates whether a new
 -- element has been parsed or if the end of the compound has arrived.
