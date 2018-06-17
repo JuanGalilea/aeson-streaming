@@ -132,7 +132,7 @@ isCompound _ = False
 isAtom :: ParseResult p -> Bool
 isAtom = not . isCompound
 
--- | Match an atomic `PatternResult` as a `A.Value`.
+-- | Match an atomic `ParseResult` as a `A.Value`.
 pattern AtomicResult :: NextParser p -> A.Value -> ParseResult p
 pattern AtomicResult p v <- (atom -> Just (p, v))
 {-# COMPLETE AtomicResult, ArrayResult, ObjectResult #-}
@@ -194,14 +194,12 @@ parseValue (ObjectResult cont) = fmap A.Object <$> parseRestOfObject cont
 parseValue (ArrayResult cont) = fmap A.Array <$> parseRestOfArray cont
 parseValue (AtomicResult cont value) = pure (cont, value)
 
--- | Decode a value via a `A.FromJSON` instance.  Note that this does
--- /not/ use direct decoding, instead converting via `A.Value`.
+-- | Decode a value via a `A.FromJSON` instance.
 decodeValue :: (A.FromJSON a) => ParseResult p -> Parser (NextParser p, A.Result a)
 decodeValue p = fmap A.fromJSON <$> parseValue p
 
 -- | Decode a value via a `A.FromJSON` instance, failing the parse if
--- the decoding fails.  Note that this does /not/ use direct decoding,
--- instead converting via `A.Value`.
+-- the decoding fails.
 decodeValue' :: (A.FromJSON a) => ParseResult p -> Parser (NextParser p, a)
 decodeValue' p =
   decodeValue p >>= \case
