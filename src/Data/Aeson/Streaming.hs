@@ -69,23 +69,20 @@ instance Functor Parser where
 
 instance Applicative Parser where
   pure a = Parser (flip AP.Done a)
-  (<*>) :: forall a b. Parser (a->b) -> Parser a -> Parser b
-  Parser f <*> Parser r = Parser (parseLoop result f)
+  Parser f <*> Parser r = Parser $ parseLoop result f
     where
-      result leftover f' = f' <$> r leftover
+      result f' = fmap f' . r
 
 instance Monad Parser where
-  (>>=) :: forall a b. Parser a -> (a -> Parser b) -> Parser b
-  (Parser f) >>= next = Parser (parseLoop result f)
-    where
-      result leftover a = parse (next a) leftover
+  (Parser f) >>= next = Parser $ parseLoop (parse . next) f
 
-parseLoop :: (ByteString -> i -> AP.Result r) -> (ByteString -> AP.Result i) -> ByteString -> AP.Result r
+parseLoop :: (i -> ByteString -> AP.Result r) -> (ByteString -> AP.Result i) -> ByteString -> AP.Result r
 parseLoop result = go
   where
     go f bs =
       case f bs of
-        AP.Done leftover i -> result leftover i
+        AP.Done leftover i | BS.null leftover -> AP.Partial (result i)
+                           | otherwise -> result i leftover
         AP.Fail x y z -> AP.Fail x y z
         AP.Partial f' -> AP.Partial (go f')
 

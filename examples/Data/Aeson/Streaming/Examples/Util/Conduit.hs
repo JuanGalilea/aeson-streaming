@@ -22,15 +22,18 @@ sinkParser :: MonadThrow m => Parser p -> ConduitT ByteString x m p
 sinkParser p = go (parse p)
   where
     go parser =
-      fmap (parser . fromMaybe BS.empty) await >>= \case
-        Done bs' r ->
-          do
-            unless (BS.null bs') (leftover bs')
-            pure r
-        Fail x y z ->
-          throwM (ParseError x y z)
-        Partial cont ->
-          go cont
+      await >>= \case
+        Just bs | BS.null bs -> go parser
+                | otherwise -> step (parser bs)
+        Nothing -> step (parser BS.empty)
+    step (Done bs' r) =
+      do
+        unless (BS.null bs') (leftover bs')
+        pure r
+    step (Fail x y z) =
+      throwM (ParseError x y z)
+    step (Partial cont) =
+      go cont
 
 data ParseError = ParseError ByteString [String] String
                 | EndOfInput
