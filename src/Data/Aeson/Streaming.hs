@@ -191,7 +191,7 @@ skipRestOfCompound = go
   where
     go p =
       p >>= \case
-        End n -> Parser $ AP.parse (pure n)
+        End n -> pure n
         Element _ r -> skipValue r >>= go
 
 -- | Parse the whole of the current value from the current position.
