@@ -117,11 +117,11 @@ data ParseResult (p :: Path)
   -- of the array.
   | NullResult (NextParser p)
   -- ^ We've seen and consumed a @null@
-  | StringResult (NextParser p) !Text
+  | StringResult (NextParser p) Text
   -- ^ We've seen an consumed a string
-  | BoolResult (NextParser p) !Bool
+  | BoolResult (NextParser p) Bool
   -- ^ We've seen and cosumed a boolean
-  | NumberResult (NextParser p) !Scientific
+  | NumberResult (NextParser p) Scientific
   -- ^ We've seen and consumed a number
 
 -- | Match an atomic `ParseResult` as a `A.Value`.
