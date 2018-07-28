@@ -1,8 +1,9 @@
 {-# LANGUAGE LambdaCase #-}
 
-module Data.Aeson.Streaming.Examples.Util.Conduit (
+module Data.Aeson.Streaming.Conduit (
   sinkParser
-, ParseError
+, sinkParser'
+, ParseError(..)
 ) where
 
 import Conduit
@@ -15,9 +16,8 @@ import Data.Typeable
 
 import Data.Aeson.Streaming
 
--- TODO: move this module into a library.
-
-sinkParser :: MonadThrow m => Parser p -> ConduitT ByteString x m p
+-- | Run the given `Parser` until it fails or produces a result.
+sinkParser :: (Monad m) => Parser p -> ConduitT ByteString x m (Either ParseError p)
 sinkParser p = go (parse p)
   where
     go parser =
@@ -28,14 +28,20 @@ sinkParser p = go (parse p)
     step (Done bs' r) =
       do
         unless (BS.null bs') (leftover bs')
-        pure r
+        pure $ Right r
     step (Fail x y z) =
-      throwM (ParseError x y z)
+      pure . Left $ ParseError x y z
     step (Partial cont) =
       go cont
 
+-- | Run the given `Parser` until it fails or produces a result.
+-- Throws a `ParseError` if failure occurs.
+sinkParser' :: (MonadThrow m) => Parser p -> ConduitT ByteString x m p
+sinkParser' p =
+  sinkParser p >>= either throwM pure
+
+-- | An attoparsec `Fail`ure as an exception
 data ParseError = ParseError ByteString [String] String
-                | EndOfInput
                 deriving (Show, Typeable)
 
 instance Exception ParseError

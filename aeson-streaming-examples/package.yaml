@@ -1,0 +1,20 @@
+name: aeson-streaming-examples
+version: 0.0.0.0
+license: PublicDomain
+
+executables:
+  aeson-streaming-examples:
+    source-dirs: src
+    main: Main.hs
+    dependencies:
+      - base
+      - aeson
+      - aeson-streaming
+      - aeson-streaming-conduit
+      - bytestring
+      - conduit
+      - containers
+      - dlist
+      - text
+      - transformers
+    ghc-options: -Wall -Wincomplete-uni-patterns -Wpartial-fields -Wincomplete-record-updates -Wmissing-export-lists -Wcompat -O -rtsopts

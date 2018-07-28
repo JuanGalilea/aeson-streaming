@@ -1,0 +1,13 @@
+name: aeson-streaming-conduit
+version: 0.0.0.0
+license: PublicDomain
+
+library:
+  source-dirs: src
+  dependencies:
+    - base
+    - attoparsec
+    - conduit
+    - aeson-streaming
+    - bytestring
+  ghc-options: -Wall -Wincomplete-uni-patterns -Wpartial-fields -Wincomplete-record-updates -Wmissing-export-lists -Wcompat -O

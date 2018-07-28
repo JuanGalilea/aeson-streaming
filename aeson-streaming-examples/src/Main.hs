@@ -6,7 +6,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 
-module Main where
+module Main (main) where
 
 import System.Environment (getArgs, getProgName)
 import Conduit
@@ -20,9 +20,9 @@ import Data.List (intercalate)
 import Data.ByteString (ByteString)
 
 import Data.Aeson.Streaming
+import Data.Aeson.Streaming.Conduit (sinkParser')
 import Data.Aeson.Streaming.Examples
 import Data.Aeson.Streaming.Examples.Util (renderPath, valueAsText, parsePath)
-import Data.Aeson.Streaming.Examples.Util.Conduit (sinkParser)
 
 commands :: Map String (String, [String] -> IO ())
 commands = Map.fromList [
@@ -38,11 +38,11 @@ commands = Map.fromList [
   ("navigate", (
       "Read a JSON value from standard input, printing the value at the path given on the command line.",
       \path ->
-        runExample ((yield . maybe "--not found--" valueAsText) =<< sinkParser (navigate $ parsePath path)))),
+        runExample ((yield . maybe "--not found--" valueAsText) =<< sinkParser' (navigate $ parsePath path)))),
   ("skip", (
       "Skip over a JSON value from standard input, doing nothing with it at all.",
       \_ ->
-        runExample (sinkParser (skipValue =<< root))))
+        runExample (sinkParser' (skipValue =<< root))))
   ]
 
 runExample :: ConduitT ByteString Text IO () -> IO ()

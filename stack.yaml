@@ -1,7 +1,9 @@
-resolver: lts-11.9
+resolver: lts-12.2
 
 packages:
-- '.'
+- aeson-streaming
+- aeson-streaming-conduit
+- aeson-streaming-examples
 
 extra-deps: []
 

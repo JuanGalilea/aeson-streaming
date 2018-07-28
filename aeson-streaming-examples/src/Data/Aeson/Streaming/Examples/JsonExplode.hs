@@ -9,11 +9,10 @@ module Data.Aeson.Streaming.Examples.JsonExplode (
 import Conduit
 import Data.Aeson (Value)
 import Data.Aeson.Streaming
+import Data.Aeson.Streaming.Conduit (sinkParser')
 import Data.ByteString (ByteString)
 import Data.DList (DList)
 import qualified Data.DList as DL
-
-import Data.Aeson.Streaming.Examples.Util.Conduit (sinkParser)
 
 -- An alias because otherwise the internal type annotations are very long
 type JsonExplode m a = ConduitT ByteString ([PathComponent], Value) m a
@@ -22,7 +21,7 @@ type JsonExplode m a = ConduitT ByteString ([PathComponent], Value) m a
 -- atomic-value) pairs.
 jsonExplode :: forall m. (MonadThrow m)
             => JsonExplode m ()
-jsonExplode = consume DL.empty =<< sinkParser root
+jsonExplode = consume DL.empty =<< sinkParser' root
   where
     -- Yield all the leaves of the current value, which is located at
     -- the given path, and return a parser for the next value at the
@@ -40,7 +39,7 @@ jsonExplode = consume DL.empty =<< sinkParser root
     -- compound's parent.
     consumeCompound :: (PathableIndex c) => DList PathComponent -> NextParser ('In c p) -> JsonExplode m (NextParser p)
     consumeCompound path parser =
-      sinkParser parser >>= \case
+      sinkParser' parser >>= \case
         Element idx result ->
           do
             nextParser <- consume (DL.snoc path (pathComponent idx)) result

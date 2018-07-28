@@ -1,0 +1,30 @@
+name: aeson-streaming
+version: 0.0.0.0
+license: PublicDomain
+
+ghc-options: -Wall -Wincomplete-uni-patterns -Wpartial-fields -Wincomplete-record-updates -Wmissing-export-lists -Wcompat -O
+
+dependencies:
+  - base
+  - aeson
+  - attoparsec
+  - bytestring
+  - scientific
+  - unordered-containers
+  - vector
+
+library:
+  source-dirs: src
+  dependencies:
+    - text
+
+tests:
+  tasty:
+    source-dirs: test
+    main: Main.hs
+    dependencies:
+      - tasty
+      - tasty-hunit
+      - tasty-hedgehog
+      - hedgehog
+      - aeson-streaming

@@ -1,11 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Data.Aeson.Streaming.Examples.Util (
-  tshow
-, renderPath
+  renderPath
 , valueAsText
 , parsePath
-, parsePathComponent
 ) where
 
 import Data.Text (Text)
