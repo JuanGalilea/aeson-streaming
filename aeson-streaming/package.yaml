@@ -10,7 +10,6 @@ dependencies:
   - attoparsec
   - bytestring
   - scientific
-  - template-haskell
   - unordered-containers
   - vector
 
@@ -18,6 +17,7 @@ library:
   source-dirs: src
   dependencies:
     - text
+    - template-haskell
 
 tests:
   tasty:
