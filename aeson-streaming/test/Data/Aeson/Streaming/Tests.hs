@@ -1,4 +1,4 @@
-module Data.Aeson.Streaming.Tests where
+module Data.Aeson.Streaming.Tests (tests) where
 
 import Test.Tasty
 
