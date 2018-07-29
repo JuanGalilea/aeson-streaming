@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -12,6 +13,7 @@ module Data.Aeson.Streaming (
 , Parser
 , parse
 , parseL
+, SomeParseResult(..)
 , SomeArrayParser(..)
 , SomeObjectParser(..)
 , NextParser
@@ -30,6 +32,8 @@ module Data.Aeson.Streaming (
 , decodeValue'
 , parseRestOfArray
 , parseRestOfObject
+, navigateFromTo
+, navigateTo
 ) where
 
 import qualified Control.Monad.Fail as Fail
@@ -51,6 +55,8 @@ import qualified Data.Vector as V
 -- backtracking capabilities, which allows it to discard its input as
 -- it is used.
 newtype Parser a = Parser (ByteString -> AP.Result a)
+
+data SomeParseResult = forall p. SomeParseResult (ParseResult p)
 
 -- | A wrapper that allows a function to return a parser positioned
 -- within an arbitarily deeply nested array, forgetting the path it
@@ -229,3 +235,27 @@ parseRestOfObject = parseRestOfCompound (,) HM.fromList
 -- | Parse the rest of the current array into an `A.Array`.
 parseRestOfArray :: Parser (Element 'Array p) -> Parser (NextParser p, A.Array)
 parseRestOfArray = parseRestOfCompound (\_ v -> v) (V.fromList . reverse)
+
+-- | Navigate deeper into a tree, forgetting the path taken to get there
+navigateFromTo :: ParseResult p -> [PathComponent] -> Parser SomeParseResult
+navigateFromTo startPoint startPath = go [] startPath startPoint
+  where
+    go :: [PathComponent] -> [PathComponent] -> ParseResult p -> Parser SomeParseResult
+    go _ [] r = pure (SomeParseResult r)
+    go path (idx@(Offset i) : rest) (ArrayResult p') = findItem i (idx:path) rest p'
+    go path (idx@(Field f) : rest) (ObjectResult p') = findItem f (idx:path) rest p'
+    go path _ _ = fail $ "Path mismatch at " ++ show (reverse path)
+    findItem :: Eq (Index c) => Index c -> [PathComponent] -> [PathComponent] -> Parser (Element c p) -> Parser SomeParseResult
+    findItem i path rest p =
+      p >>= \case
+        Element e r | e == i -> go path rest r
+                    | otherwise -> findItem i path rest =<< skipValue r
+        End _ -> fail $ "did not find item at " ++ show (reverse path)
+
+-- | Navigate to a particular point in the input object, forgetting
+-- the path taken to get there.
+navigateTo :: [PathComponent] -> Parser SomeParseResult
+navigateTo path =
+  do
+    r <- root
+    navigateFromTo r path

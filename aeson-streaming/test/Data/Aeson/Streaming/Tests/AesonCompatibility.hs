@@ -5,29 +5,17 @@ module Data.Aeson.Streaming.Tests.AesonCompatibility (
 ) where
 
 import qualified Data.Aeson as Aeson
-import qualified Data.Attoparsec.ByteString.Lazy as AP
 import Hedgehog
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog
-import Data.ByteString.Lazy (ByteString)
 import qualified Data.Scientific as Scientific
 import qualified Data.Vector as V
 import qualified Data.HashMap.Strict as HM
 
-import Data.Aeson.Streaming
-
-parseA :: ByteString -> Maybe Aeson.Value
-parseA = Aeson.decode
-
-parseS :: ByteString -> Maybe Aeson.Value
-parseS = AP.maybeResult . parseL parser
-  where
-    parser = do
-      ((), result) <- parseValue =<< root
-      pure result
+import Data.Aeson.Streaming.Tests.Utils
 
 objectOrdering :: TestTree
 objectOrdering = testCase "Objects with duplicate keys select the same value" $

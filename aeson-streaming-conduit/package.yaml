@@ -8,6 +8,7 @@ library:
     - base
     - attoparsec
     - conduit
+    - aeson
     - aeson-streaming
     - bytestring
   ghc-options: -Wall -Wincomplete-uni-patterns -Wpartial-fields -Wincomplete-record-updates -Wmissing-export-lists -Wcompat -O
