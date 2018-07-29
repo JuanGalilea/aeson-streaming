@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskellQuotes #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE DataKinds #-}
@@ -16,6 +17,7 @@ module Data.Aeson.Streaming.Internal (
 , PathComponent(..)
 , PathableIndex(..)
 , root
+, jpath
 ) where
 
 import qualified Data.Aeson as A
@@ -31,6 +33,9 @@ import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
 import Data.Scientific (Scientific)
 import Text.ParserCombinators.ReadP
+import Text.Read (readMaybe)
+import Language.Haskell.TH.Quote (QuasiQuoter(..))
+import Language.Haskell.TH.Syntax (Exp(..), Pat(..), Type(..), Lit(..))
 
 #define CLOSE_CURLY 125
 #define CLOSE_SQUARE 93
@@ -131,6 +136,28 @@ parsePath = nonEmpty +++ empty
       case A.decode . BSL.fromStrict . T.encodeUtf8 $ T.pack t of
         Just s -> pure $ Field s
         Nothing -> pfail
+
+-- | A quasiquoter for json path literals.
+jpath :: QuasiQuoter
+jpath = QuasiQuoter { quoteExp =
+                        maybe (fail "invalid path") (pure . convertExp) . readMaybe
+                    , quotePat =
+                        maybe (fail "invalid path") (pure . convertPat) . readMaybe
+                    , quoteType = const $ fail "invalid type"
+                    , quoteDec = const $ fail "invalid declaration"
+                    }
+
+convertExp :: [PathComponent] -> Exp
+convertExp pcs = SigE (ListE $ map convertComponent pcs) (AppT ListT $ ConT ''PathComponent)
+  where
+    convertComponent (Offset i) = AppE (ConE 'Offset) (LitE . IntegerL $ fromIntegral i)
+    convertComponent (Field f) = AppE (ConE 'Field) (LitE . StringL $ T.unpack f)
+
+convertPat :: [PathComponent] -> Pat
+convertPat pcs = ListP $ map convertComponent pcs
+  where
+    convertComponent (Offset i) = ConP 'Offset [LitP . IntegerL $ fromIntegral i]
+    convertComponent (Field f) = ConP 'Field [LitP . StringL $ T.unpack f]
 
 class PathableIndex (c :: Compound) where
   -- | Promote an index of possibly partially unknown type to a path component

@@ -10,6 +10,7 @@ dependencies:
   - attoparsec
   - bytestring
   - scientific
+  - template-haskell
   - unordered-containers
   - vector
 

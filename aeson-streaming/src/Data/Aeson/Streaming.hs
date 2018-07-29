@@ -38,13 +38,15 @@ module Data.Aeson.Streaming (
 , navigateTo'
 , findElement
 , findElement'
+, jpath
 ) where
 
 import qualified Control.Monad.Fail as Fail
 import qualified Data.Aeson as A
 import qualified Data.Aeson.Streaming.Internal as S
 import Data.Aeson.Streaming.Internal (Compound(..), Path(..), Index,
-                                      PathComponent(..), PathableIndex(..))
+                                      PathComponent(..), PathableIndex(..),
+                                      jpath)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL

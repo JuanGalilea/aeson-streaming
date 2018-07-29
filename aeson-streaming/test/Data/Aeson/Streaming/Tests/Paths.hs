@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module Data.Aeson.Streaming.Tests.Paths (paths) where
 
@@ -18,6 +19,16 @@ testShow = testCase "show" $
 testRead :: TestTree
 testRead = testCase "read" $
   [Field "hello", Offset 0, Field "there world"] @=? read ".hello[0][\"there world\"]"
+
+testQQExp :: TestTree
+testQQExp = testCase "quasiquoter expression" $
+  [Field "hello", Offset 0, Field "there world"] @=? [jpath|.hello[0]["there world"]|]
+
+testQQPat :: TestTree
+testQQPat = testCase "quasiquoter pattern" $
+  case [Field "hello", Offset 0, Field "there world"] of
+    [jpath|.hello[0]["there world"]|] -> pure ()
+    _ -> assertFailure "didn't match the path"
 
 genPathComponent :: (MonadGen m) => m PathComponent
 genPathComponent = Gen.choice [genOffset, genField]
@@ -43,4 +54,6 @@ paths = testGroup "paths" [ testShow
                           , testRead
                           , testRoundTrip
                           , testPreDot
+                          , testQQExp
+                          , testQQPat
                           ]
