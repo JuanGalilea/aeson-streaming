@@ -109,10 +109,10 @@ type family NextParser (p :: Path) = r | r -> p where
 -- types (null, string, boolean, number) or a parser that can consume
 -- one of the compound types (array, object)
 data ParseResult (p :: Path)
-  = ArrayResult (NextParser ('In 'Array p))
+  = ArrayResult (Parser (Element 'Array p))
   -- ^ We've seen a @[@ and have a parser for producing the elements
   -- of the array.
-  | ObjectResult (NextParser ('In 'Object p))
+  | ObjectResult (Parser (Element 'Object p))
   -- ^ We've seen a @{@ and have a parser for producing the elements
   -- of the array.
   | NullResult (NextParser p)
@@ -171,7 +171,7 @@ skipValue (ObjectResult p) = skipRestOfCompound p
 skipValue (AtomicResult p _) = pure p
 
 -- | Skip the rest of the current array or object.
-skipRestOfCompound :: NextParser ('In c p) -> Parser (NextParser p)
+skipRestOfCompound :: Parser (Element c p) -> Parser (NextParser p)
 skipRestOfCompound = go
   where
     go p =
@@ -198,7 +198,7 @@ decodeValue' p =
     (p', A.Success v) -> pure (p', v)
     (_, A.Error s) -> fail s
 
-parseRestOfCompound :: (Index c -> A.Value -> e) -> ([e] -> r) -> NextParser ('In c p) -> Parser (NextParser p, r)
+parseRestOfCompound :: (Index c -> A.Value -> e) -> ([e] -> r) -> Parser (Element c p) -> Parser (NextParser p, r)
 parseRestOfCompound interest complete p0 = go p0 []
   where
     go p acc =
@@ -210,9 +210,9 @@ parseRestOfCompound interest complete p0 = go p0 []
           pure (p', complete acc)
 
 -- | Parse the rest of the current object into an `A.Object`.
-parseRestOfObject :: NextParser ('In 'Object p) -> Parser (NextParser p, A.Object)
+parseRestOfObject :: Parser (Element 'Object p) -> Parser (NextParser p, A.Object)
 parseRestOfObject = parseRestOfCompound (,) HM.fromList
 
 -- | Parse the rest of the current array into an `A.Array`.
-parseRestOfArray :: NextParser ('In 'Array p) -> Parser (NextParser p, A.Array)
+parseRestOfArray :: Parser (Element 'Array p) -> Parser (NextParser p, A.Array)
 parseRestOfArray = parseRestOfCompound (\_ v -> v) (V.fromList . reverse)

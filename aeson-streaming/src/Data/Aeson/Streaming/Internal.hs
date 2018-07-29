@@ -89,10 +89,10 @@ type family NextParser (p :: Path) = r | r -> p where
 -- types (null, string, boolean, number) or a parser that can consume
 -- one of the compound types (array, object)
 data ParseResult (p :: Path)
-  = ArrayResult (NextParser ('In 'Array p))
+  = ArrayResult (Parser (Element 'Array p))
   -- ^ We've seen a @[@ and have a parser for producing the elements
   -- of the array.
-  | ObjectResult (NextParser ('In 'Object p))
+  | ObjectResult (Parser (Element 'Object p))
   -- ^ We've seen a @{@ and have a parser for producing the elements
   -- of the array.
   | NullResult (NextParser p)
@@ -128,14 +128,14 @@ nested cont = do
     w | w >= C_0 && w <= C_9 || w == DASH -> NumberResult cont <$> A.scientific
     _ -> broken
 
-array :: NextParser p -> NextParser ('In 'Array p)
+array :: NextParser p -> Parser (Element 'Array p)
 array cont = do
   skipSpace
   AP.peekWord8' >>= \case
     CLOSE_SQUARE -> End cont <$ AP.anyWord8
     _ -> Element 0 <$> nested (restOfArray 1 cont)
 
-restOfArray :: Int -> NextParser p -> NextParser ('In 'Array p)
+restOfArray :: Int -> NextParser p -> Parser (Element 'Array p)
 restOfArray !i cont = do
   skipSpace
   AP.anyWord8 >>= \case
@@ -143,14 +143,14 @@ restOfArray !i cont = do
     COMMA -> Element i <$> nested (restOfArray (i+1) cont)
     _ -> broken
 
-object :: NextParser p -> NextParser ('In 'Object p)
+object :: NextParser p -> Parser (Element 'Object p)
 object cont = do
   skipSpace
   AP.peekWord8' >>= \case
     CLOSE_CURLY -> End cont <$ AP.anyWord8
     _ -> field cont
 
-restOfObject :: NextParser p -> NextParser ('In 'Object p)
+restOfObject :: NextParser p -> Parser (Element 'Object p)
 restOfObject cont = do
   skipSpace
   AP.anyWord8 >>= \case
