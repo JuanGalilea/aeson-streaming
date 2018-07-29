@@ -33,7 +33,11 @@ module Data.Aeson.Streaming (
 , parseRestOfArray
 , parseRestOfObject
 , navigateFromTo
+, navigateFromTo'
 , navigateTo
+, navigateTo'
+, findElement
+, findElement'
 ) where
 
 import qualified Control.Monad.Fail as Fail
@@ -236,26 +240,54 @@ parseRestOfObject = parseRestOfCompound (,) HM.fromList
 parseRestOfArray :: Parser (Element 'Array p) -> Parser (NextParser p, A.Array)
 parseRestOfArray = parseRestOfCompound (\_ v -> v) (V.fromList . reverse)
 
--- | Navigate deeper into a tree, forgetting the path taken to get there
-navigateFromTo :: ParseResult p -> [PathComponent] -> Parser SomeParseResult
-navigateFromTo startPoint startPath = go [] startPath startPoint
+-- | Navigate deeper into a tree, forgetting the path taken to get
+-- there.  Returns either a ParseResult for the start of the
+-- desired item or the path prefix at which the navigation failed
+-- together with `Just` the parse result at that point if the failure
+-- was due to a component being the wrong type or `Nothing` if it was
+-- due to the desired index not being there.
+navigateFromTo :: Parser (ParseResult p) -> [PathComponent] -> Parser (Either ([PathComponent], Maybe SomeParseResult) SomeParseResult)
+navigateFromTo startPoint startPath = go [] startPath =<< startPoint
   where
-    go :: [PathComponent] -> [PathComponent] -> ParseResult p -> Parser SomeParseResult
-    go _ [] r = pure (SomeParseResult r)
-    go path (idx@(Offset i) : rest) (ArrayResult p') = findItem i (idx:path) rest p'
-    go path (idx@(Field f) : rest) (ObjectResult p') = findItem f (idx:path) rest p'
-    go path _ _ = fail $ "Path mismatch at " ++ show (reverse path)
-    findItem :: Eq (Index c) => Index c -> [PathComponent] -> [PathComponent] -> Parser (Element c p) -> Parser SomeParseResult
-    findItem i path rest p =
-      p >>= \case
-        Element e r | e == i -> go path rest r
-                    | otherwise -> findItem i path rest =<< skipValue r
-        End _ -> fail $ "did not find item at " ++ show (reverse path)
+    go :: [PathComponent] -> [PathComponent] -> ParseResult p -> Parser (Either ([PathComponent], Maybe SomeParseResult) SomeParseResult)
+    go _ [] r = pure . Right $ SomeParseResult r
+    go path (idx@(Offset i) : rest) (ArrayResult p') = continue (idx:path) rest =<< findElement i p'
+    go path (idx@(Field f) : rest) (ObjectResult p') = continue (idx:path) rest =<< findElement f p'
+    go path (idx : _) r = pure $ Left (reverse (idx : path), Just $ SomeParseResult r)
+    continue path _ (Left _) = pure $ Left (reverse path, Nothing)
+    continue path rest (Right r) = go path rest r
+
+-- | Like `navigateFromTo` but fails if the result can't be found
+navigateFromTo' :: Parser (ParseResult p) -> [PathComponent] -> Parser SomeParseResult
+navigateFromTo' startPoint startPath =
+  navigateFromTo startPoint startPath >>= \case
+    Right r -> pure r
+    Left (pc, Nothing) -> fail $ "Didn't find element at " ++ show pc
+    Left (pc, Just _) -> fail $ "Didn't find the right kind of element at " ++ show pc
 
 -- | Navigate to a particular point in the input object, forgetting
--- the path taken to get there.
-navigateTo :: [PathComponent] -> Parser SomeParseResult
-navigateTo path =
-  do
-    r <- root
-    navigateFromTo r path
+-- the path taken to get there.  This is the same as `navigateFromTo`
+-- using `root` as the starting point.
+navigateTo :: [PathComponent] -> Parser (Either ([PathComponent], Maybe SomeParseResult) SomeParseResult)
+navigateTo = navigateFromTo root
+
+-- | Like `navigateTo` but fails if the result can't be found
+navigateTo' :: [PathComponent] -> Parser SomeParseResult
+navigateTo' = navigateFromTo' root
+
+-- | Find an element in the current compound item, returning either a
+-- parse result for the start of the found item or a parser for
+-- continuing to parse after the end of the compound.
+findElement :: (Eq (Index c)) => Index c -> Parser (Element c p) -> Parser (Either (NextParser p) (ParseResult ('In c p)))
+findElement i p =
+  p >>= \case
+    Element e r | e == i -> pure $ Right r
+                | otherwise -> findElement i =<< skipValue r
+    End p' -> pure (Left p')
+
+-- | Like `findElement` but fails if the result can't be found
+findElement' :: (Show (Index c), Eq (Index c)) => Index c -> Parser (Element c p) -> Parser (ParseResult ('In c p))
+findElement' i p =
+  findElement i p >>= \case
+    Right r -> pure r
+    Left _ -> fail $ "Didn't find the element at " ++ show i
