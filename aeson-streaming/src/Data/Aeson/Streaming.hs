@@ -1,3 +1,4 @@
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE DataKinds #-}
@@ -11,6 +12,8 @@ module Data.Aeson.Streaming (
 , Parser
 , parse
 , parseL
+, SomeArrayParser(..)
+, SomeObjectParser(..)
 , NextParser
 , ParseResult(.., AtomicResult)
 , Compound(..)
@@ -48,6 +51,16 @@ import qualified Data.Vector as V
 -- backtracking capabilities, which allows it to discard its input as
 -- it is used.
 newtype Parser a = Parser (ByteString -> AP.Result a)
+
+-- | A wrapper that allows a function to return a parser positioned
+-- within an arbitarily deeply nested array, forgetting the path it
+-- took to get there.
+data SomeArrayParser = forall p. SomeArrayParser (Parser (Element 'Array p))
+
+-- | A wrapper that allows a function to return a parser positioned
+-- within an arbitarily deeply nested object, forgetting the path it
+-- took to get there.
+data SomeObjectParser = forall p. SomeObjectParser (Parser (Element 'Object p))
 
 -- | Apply a parser to a `ByteString` to start the parsing process.
 parse :: Parser a -> ByteString -> AP.Result a
