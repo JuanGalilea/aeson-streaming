@@ -3,7 +3,6 @@
 module Data.Aeson.Streaming.Examples.Util (
   renderPath
 , valueAsText
-, parsePath
 ) where
 
 import Data.Text (Text)
@@ -12,7 +11,6 @@ import qualified Data.Text.Lazy as TL
 import Data.Aeson (Value)
 import qualified Data.Aeson.Text as AT
 import Data.Aeson.Streaming
-import Text.Read (readMaybe)
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 
 tshow :: (Show a) => a -> Text
@@ -31,12 +29,3 @@ renderPath = mconcat . concatMap render
 
 valueAsText :: Value -> Text
 valueAsText = TL.toStrict . AT.encodeToLazyText
-
-parsePathComponent :: String -> PathComponent
-parsePathComponent p =
-  case readMaybe p of
-    Just i -> Offset i
-    Nothing -> Field (T.pack p)
-
-parsePath :: [String] -> [PathComponent]
-parsePath = map parsePathComponent

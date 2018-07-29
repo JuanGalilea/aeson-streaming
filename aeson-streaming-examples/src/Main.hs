@@ -22,7 +22,7 @@ import Data.ByteString (ByteString)
 import Data.Aeson.Streaming
 import Data.Aeson.Streaming.Conduit (sinkParser')
 import Data.Aeson.Streaming.Examples
-import Data.Aeson.Streaming.Examples.Util (renderPath, valueAsText, parsePath)
+import Data.Aeson.Streaming.Examples.Util (renderPath, valueAsText)
 
 commands :: Map String (String, [String] -> IO ())
 commands = Map.fromList [
@@ -37,8 +37,8 @@ commands = Map.fromList [
                                            renderPath p <> " : " <> valueAsText v)))),
   ("navigate", (
       "Read a JSON value from standard input, printing the value at the path given on the command line.",
-      \path ->
-        runExample ((yield . maybe "--not found--" valueAsText) =<< sinkParser' (navigate $ parsePath path)))),
+      \(path : _) ->
+        runExample ((yield . maybe "--not found--" valueAsText) =<< sinkParser' (navigate $ read path)))),
   ("skip", (
       "Skip over a JSON value from standard input, doing nothing with it at all.",
       \_ ->

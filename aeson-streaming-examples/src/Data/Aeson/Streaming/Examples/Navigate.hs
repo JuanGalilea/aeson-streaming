@@ -4,6 +4,7 @@
 
 module Data.Aeson.Streaming.Examples.Navigate (
   navigate
+, navigate'
 ) where
 
 import Conduit
@@ -16,7 +17,15 @@ import Data.Aeson.Streaming
 -- `Parser`s, because it finds a single item and then stops, rather
 -- than producing multiple values from the input.
 navigate :: [PathComponent] -> Parser (Maybe Value)
-navigate = runMaybeT . start
+navigate path =
+  navigateTo path >>= \case
+    Right (SomeParseResult r) -> Just . snd <$> parseValue r
+    Left _ -> pure Nothing
+
+-- If you wanted to do this tree-walking yourself, the code would look
+-- something like this.
+navigate' :: [PathComponent] -> Parser (Maybe Value)
+navigate' = runMaybeT . start
   where
     start :: [PathComponent] -> MaybeT Parser Value
     start path = step path =<< lift root
@@ -29,11 +38,11 @@ navigate = runMaybeT . start
     step (Field field : path) (ObjectResult parser) =
       -- Want an object, found an object.  Find the right field and
       -- step down the path.
-      step path =<< findElement field parser
+      step path =<< lookFor field parser
     step (Offset index : path) (ArrayResult parser) =
       -- Want an array, found an array.  Find the right index and step
       -- down the path.
-      step path =<< findElement index parser
+      step path =<< lookFor index parser
     step _ _ =
       -- We didn't find the type of thing we wanted along the path, so
       -- produce Nothing.
@@ -41,14 +50,8 @@ navigate = runMaybeT . start
 
     -- The current element is a compound; look for the given target
     -- element, or abort and result in Nothing if it's not there.
-    findElement :: (Eq (Index c)) => Index c -> NextParser ('In c p) -> MaybeT Parser (ParseResult ('In c p))
-    findElement target parser =
-      lift parser >>= \case
-        Element i result | i == target ->
-                             pure result
-                         | otherwise ->
-                             do
-                               nextParser <- lift (skipValue result)
-                               findElement target nextParser
-        End _ ->
-          fail "index not found"
+    lookFor :: (Eq (Index c)) => Index c -> NextParser ('In c p) -> MaybeT Parser (ParseResult ('In c p))
+    lookFor target parser =
+      lift (findElement target parser) >>= \case
+        Right p -> pure p
+        Left _ -> fail "index not found"
