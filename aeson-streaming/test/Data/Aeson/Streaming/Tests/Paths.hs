@@ -10,7 +10,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog
 
-import Data.Aeson.Streaming
+import Data.Aeson.Streaming.Paths
 
 testShow :: TestTree
 testShow = testCase "show" $
