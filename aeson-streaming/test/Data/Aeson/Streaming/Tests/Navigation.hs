@@ -1,8 +1,9 @@
+{-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE LambdaCase #-}
 
 module Data.Aeson.Streaming.Tests.Navigation (navigation) where
 
+import Data.Either
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -29,9 +30,23 @@ testArrayInObjectInArray = testCase "can find an array element in an object in a
   let json = "[true, false, { \"one\" : false, \"two\" : [ \"a\", \"b\", \"c\", { \"hello\" : \"world\" }, \"d\" ], \"three\" : true }]"
   parseA "{ \"hello\": \"world\" }" @=? parseP (navigateTo' [Offset 2, Field "two", Offset 3]) json
 
+testArrayInObjectInArrayFailNonexistant :: TestTree
+testArrayInObjectInArrayFailNonexistant = testCase "can fail with a path that doesn't exist" $ do
+  let json = "[true, false, { \"one\" : false, \"two\" : [ \"a\", \"b\", \"c\", { \"hello\" : \"world\" }, \"d\" ], \"three\" : true }]"
+  let pc = fromLeft (error "was successful") $ parseF (navigateTo' [Offset 2, Field "two", Offset 5]) json
+  "Failed reading: Didn't find element at .[2].two[5]" @=? pc
+
+testArrayInObjectInArrayFailWrongType :: TestTree
+testArrayInObjectInArrayFailWrongType = testCase "can fail with a path that doesn't exist" $ do
+  let json = "[true, false, { \"one\" : false, \"two\" : [ \"a\", \"b\", \"c\", { \"hello\" : \"world\" }, \"d\" ], \"three\" : true }]"
+  let pc = fromLeft (error "was successful") $ parseF (navigateTo' [Offset 2, Offset 3, Offset 5]) json
+  "Failed reading: Didn't find the right kind of element at .[2][3]" @=? pc
+
 navigation :: TestTree
 navigation = testGroup "navigation" [ testRoot
                                     , testShallowArray
                                     , testShallowObject
                                     , testArrayInObjectInArray
+                                    , testArrayInObjectInArrayFailNonexistant
+                                    , testArrayInObjectInArrayFailWrongType
                                     ]

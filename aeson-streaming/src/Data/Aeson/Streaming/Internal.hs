@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE LambdaCase #-}
@@ -17,11 +18,19 @@ module Data.Aeson.Streaming.Internal (
 , root
 ) where
 
+import qualified Data.Aeson as A
+import qualified Data.Aeson.Text as A
 import qualified Data.Aeson.Parser.Internal as A
 import Data.Attoparsec.ByteString (Parser)
 import qualified Data.Attoparsec.ByteString as AP
+import qualified Data.ByteString.Lazy as BSL
+import Data.Char
 import Data.Text (Text)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
+import qualified Data.Text.Lazy as TL
 import Data.Scientific (Scientific)
+import Text.ParserCombinators.ReadP
 
 #define CLOSE_CURLY 125
 #define CLOSE_SQUARE 93
@@ -54,7 +63,74 @@ type family Index (c :: Compound) = t | t -> c where
 
 -- | A generic path component
 data PathComponent = Offset !Int | Field !Text
-  deriving (Show, Read, Eq, Ord)
+  deriving (Eq, Ord)
+
+instance Show PathComponent where
+  showsPrec d v = showParen (d > 10) $ doShow v
+    where doShow (Offset i) = showString "Offset " . showsPrec 11 i
+          doShow (Field f) = showString "Field " . showsPrec 11 f
+  showList = renderPath
+
+-- this renders a jq-style query path.
+renderPath :: [PathComponent] -> ShowS
+renderPath path suffix = preDot $ foldr render suffix path
+  where
+    render (Offset i) = ('[':) . shows i . (']':)
+    render (Field f) =
+      let fs = T.unpack f
+      in if isIdentifier fs
+         then ('.':) . showString fs
+         else ('[':) . showString (TL.unpack $ A.encodeToLazyText f) . (']':)
+    preDot cs@('.':_) = cs
+    preDot cs = '.' : cs
+
+isIdentifier :: String -> Bool
+isIdentifier "" = False
+isIdentifier (c : cs) = isInitial c && all isContinuation cs
+isInitial, isContinuation :: Char -> Bool
+isInitial c = isAsciiLower c || isAsciiUpper c || c == '_'
+isContinuation c = isInitial c || isDigit c
+
+instance Read PathComponent where
+  readsPrec d r = readParen (d > 10) (\r' -> [(Offset m,t) |
+                                              ("Offset",s) <- lex r',
+                                               (m,t) <- readsPrec 11  s]) r
+                  ++ readParen (d > 10) (\r' -> [(Field m,t) |
+                                                 ("Field",s) <- lex r',
+                                                 (m,t) <- readsPrec 11  s]) r
+  readList = readP_to_S parsePath
+
+parsePath :: ReadP [PathComponent]
+parsePath = nonEmpty +++ empty
+  where
+    nonEmpty = do
+      first <- initialComponent
+      rest <- many component
+      pure (first : rest)
+    empty = do
+      _ <- char '.'
+      pure []
+    initialComponent = parseField +++ (char '.' *> parseIndex)
+    component = parseField +++ parseIndex
+    parseField = do
+      _ <- char '.'
+      c <- satisfy isInitial
+      cs <- munch isContinuation
+      pure . Field $ T.pack (c:cs)
+    parseIndex = char '[' *> (parseNumericIndex +++ parseStringIndex) <* char ']'
+    parseNumericIndex = do
+      cs <- munch1 isDigit
+      pure . Offset $ read cs
+    parseStringIndex = char '"' *> (deJSON . ('"':) . (++"\"") . concat =<< many parseStringChar) <* char '"'
+    parseStringChar =
+      get >>= \case
+        '"' -> pfail
+        '\\' -> ('\\':) . (:[]) <$> get
+        other -> pure [other]
+    deJSON t =
+      case A.decode . BSL.fromStrict . T.encodeUtf8 $ T.pack t of
+        Just s -> pure $ Field s
+        Nothing -> pfail
 
 class PathableIndex (c :: Compound) where
   -- | Promote an index of possibly partially unknown type to a path component
