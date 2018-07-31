@@ -11,4 +11,19 @@ library:
     - aeson
     - aeson-streaming
     - bytestring
+    - text
   ghc-options: -Wall -Wincomplete-uni-patterns -Wpartial-fields -Wincomplete-record-updates -Wmissing-export-lists -Wcompat -O
+
+tests:
+  doctests:
+    source-dirs: doctests
+    main: Main.hs
+    dependencies:
+      - base
+      - doctest
+
+custom-setup:
+  dependencies:
+    - base
+    - Cabal
+    - cabal-doctest

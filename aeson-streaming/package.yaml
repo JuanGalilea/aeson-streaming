@@ -2,30 +2,46 @@ name: aeson-streaming
 version: 0.0.0.0
 license: PublicDomain
 
-ghc-options: -Wall -Wincomplete-uni-patterns -Wpartial-fields -Wincomplete-record-updates -Wmissing-export-lists -Wcompat -O
-
-dependencies:
-  - base
-  - aeson
-  - attoparsec
-  - bytestring
-  - scientific
-  - unordered-containers
-  - vector
-
 library:
   source-dirs: src
   dependencies:
-    - text
+    - base
+    - aeson
+    - attoparsec
+    - bytestring
+    - scientific
     - template-haskell
+    - text
+    - unordered-containers
+    - vector
+  ghc-options: -Wall -Wincomplete-uni-patterns -Wpartial-fields -Wincomplete-record-updates -Wmissing-export-lists -Wcompat -O
 
 tests:
   tasty:
     source-dirs: test
     main: Main.hs
     dependencies:
-      - tasty
-      - tasty-hunit
-      - tasty-hedgehog
-      - hedgehog
+      - base
+      - aeson
       - aeson-streaming
+      - attoparsec
+      - bytestring
+      - hedgehog
+      - scientific
+      - tasty
+      - tasty-hedgehog
+      - tasty-hunit
+      - unordered-containers
+      - vector
+  doctests:
+    source-dirs: doctests
+    main: Main.hs
+    dependencies:
+      - base
+      - doctest
+
+custom-setup:
+  dependencies:
+    - base
+    - Cabal
+    - cabal-doctest

@@ -19,6 +19,10 @@ import Language.Haskell.TH.Syntax (Exp(..), Pat(..), Type(..), Lit(..))
 import Text.ParserCombinators.ReadP
 import Text.Read (readMaybe)
 
+-- $setup
+-- >>> :set -XQuasiQuotes
+-- >>> :set -XOverloadedStrings
+
 -- | A generic path component
 data PathComponent = Offset !Int | Field !Text
   deriving (Eq, Ord)
@@ -91,14 +95,22 @@ parsePath = nonEmpty +++ empty
         Nothing -> pfail
 
 -- | A quasiquoter for json path literals.
+--
+-- >>> mapM_ print [jpath| .obj[0]["hello world"].value |]
+-- Field "obj"
+-- Offset 0
+-- Field "hello world"
+-- Field "value"
 jpath :: QuasiQuoter
-jpath = QuasiQuoter { quoteExp =
-                        maybe (fail "invalid path") (pure . convertExp) . readMaybe
-                    , quotePat =
-                        maybe (fail "invalid path") (pure . convertPat) . readMaybe
+jpath = QuasiQuoter { quoteExp = convert convertExp
+                    , quotePat = convert convertPat
                     , quoteType = const $ fail "invalid type"
                     , quoteDec = const $ fail "invalid declaration"
                     }
+  where
+    convert converter = maybe (fail "invalid path") (pure . converter) . extractPath
+    -- we'll allow spaces on the ends for readability
+    extractPath = readMaybe . T.unpack . T.strip . T.pack
 
 convertExp :: [PathComponent] -> Exp
 convertExp pcs = SigE (ListE $ map convertComponent pcs) (AppT ListT $ ConT ''PathComponent)
