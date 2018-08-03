@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -7,6 +8,8 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP #-}
 
 module Data.Aeson.Streaming (
   Path(..)
@@ -43,10 +46,8 @@ module Data.Aeson.Streaming (
 
 import qualified Control.Monad.Fail as Fail
 import qualified Data.Aeson as A
-import qualified Data.Aeson.Streaming.Internal as S
-import Data.Aeson.Streaming.Internal (Compound(..), Path(..), Index,
-                                      PathComponent(..), PathableIndex(..),
-                                      jpath)
+import qualified Data.Aeson.Parser.Internal as A
+import Data.Aeson.Streaming.Paths (PathComponent(..), jpath)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
@@ -56,6 +57,21 @@ import qualified Data.HashMap.Strict as HM
 import Data.Text (Text)
 import Data.Scientific (Scientific)
 import qualified Data.Vector as V
+import Data.Word (Word8)
+
+#define CLOSE_CURLY 125
+#define CLOSE_SQUARE 93
+#define COLON 58
+#define COMMA 44
+#define DASH 45
+#define DOUBLE_QUOTE 34
+#define OPEN_CURLY 123
+#define OPEN_SQUARE 91
+#define C_0 48
+#define C_9 57
+#define C_f 102
+#define C_n 110
+#define C_t 116
 
 -- | A parser akin to an Attoparsec `AP.Parser`, but without
 -- backtracking capabilities, which allows it to discard its input as
@@ -74,9 +90,35 @@ data SomeArrayParser = forall p. SomeArrayParser (Parser (Element 'Array p))
 -- took to get there.
 data SomeObjectParser = forall p. SomeObjectParser (Parser (Element 'Object p))
 
+-- | A data type used as an index for the different types of compounds.
+data Compound = Array | Object
+
+-- | JSON values are nested arrays and objects.  This is a type-level
+-- list from the current point in parsing to the root.
+data Path = Root
+          -- ^ The top level
+          | In Compound Path
+          -- ^ The path to the current nested level
+
+-- | The index type of a JSON compound
+type family Index (c :: Compound) = t | t -> c where
+   Index 'Array = Int
+   Index 'Object = Text
+
+class PathableIndex (c :: Compound) where
+  -- | Promote an index of possibly partially unknown type to a path component
+  pathComponent :: Index c -> PathComponent
+
+instance PathableIndex 'Object where
+  pathComponent = Field
+
+instance PathableIndex 'Array where
+  pathComponent = Offset
+
 -- | Apply a parser to a `ByteString` to start the parsing process.
 parse :: Parser a -> ByteString -> AP.Result a
 parse (Parser f) = f
+{-# INLINE parse #-}
 
 -- | Apply a parser to a lazy `BSL.ByteString`.
 parseL :: Parser a -> BSL.ByteString -> APL.Result a
@@ -90,15 +132,18 @@ parseL p = go (parse p) . BSL.toChunks
 
 instance Functor Parser where
   fmap f (Parser p) = Parser (fmap f . p)
+  {-# INLINE fmap #-}
 
 instance Applicative Parser where
   pure a = Parser (flip AP.Done a)
   Parser f <*> Parser r = Parser $ parseLoop result f
     where
       result f' = fmap f' . r
+  {-# INLINE (<*>) #-}
 
 instance Monad Parser where
   (Parser f) >>= next = Parser $ parseLoop (parse . next) f
+  {-# INLINE (>>=) #-}
   fail = Fail.fail
 
 instance Fail.MonadFail Parser where
@@ -113,6 +158,7 @@ parseLoop result = go
                            | otherwise -> result i leftover
         AP.Fail x y z -> AP.Fail x y z
         AP.Partial f' -> AP.Partial (go f')
+{-# INLINE parseLoop #-}
 
 -- | When parsing nested values, this type indicates whether a new
 -- element has been parsed or if the end of the compound has arrived.
@@ -165,28 +211,57 @@ atom _ = Nothing
 
 -- | A parser for a top-level value.
 root :: Parser (ParseResult 'Root)
-root = Parser $ AP.parse (convertResult <$> S.root)
+root = nested ()
 
-class ParserConverter (p :: Path) where
-  convertParser :: S.NextParser p -> NextParser p
+nested :: NextParser p -> Parser (ParseResult p)
+nested cont = do
+  skipSpace
+  peekWord8' >>= \case
+    DOUBLE_QUOTE -> anyWord8 *> (StringResult cont <$> runAP A.jstring_)
+    OPEN_CURLY -> ObjectResult (object cont) <$ anyWord8
+    OPEN_SQUARE -> ArrayResult (array cont) <$ anyWord8
+    C_f -> BoolResult cont False <$ string "false"
+    C_t -> BoolResult cont True <$ string "true"
+    C_n -> NullResult cont <$ string "null"
+    w | w >= C_0 && w <= C_9 || w == DASH -> NumberResult cont <$> runAP A.scientific
+    _ -> broken
 
-instance ParserConverter 'Root where
-  convertParser () = ()
+broken :: Parser a
+broken = fail "not a valid JSON value"
 
-instance (ParserConverter p) => ParserConverter ('In c p) where
-  convertParser parser = Parser $ AP.parse (convertElement <$> parser)
+array :: NextParser p -> Parser (Element 'Array p)
+array cont = do
+  skipSpace
+  peekWord8' >>= \case
+    CLOSE_SQUARE -> End cont <$ anyWord8
+    _ -> Element 0 <$> nested (restOfArray 1 cont)
 
-convertElement :: (ParserConverter p) => S.Element c p -> Element c p
-convertElement (S.Element index r) = Element index (convertResult r)
-convertElement (S.End p) = End (convertParser p)
+restOfArray :: Int -> NextParser p -> Parser (Element 'Array p)
+restOfArray !i cont = do
+  skipSpace
+  anyWord8 >>= \case
+    CLOSE_SQUARE -> pure (End cont)
+    COMMA -> Element i <$> nested (restOfArray (i+1) cont)
+    _ -> broken
 
-convertResult :: (ParserConverter p) => S.ParseResult p -> ParseResult p
-convertResult (S.ArrayResult p) = ArrayResult (convertParser p)
-convertResult (S.ObjectResult p) = ObjectResult (convertParser p)
-convertResult (S.NullResult p) = NullResult (convertParser p)
-convertResult (S.NumberResult p n) = NumberResult (convertParser p) n
-convertResult (S.StringResult p s) = StringResult (convertParser p) s
-convertResult (S.BoolResult p b) = BoolResult (convertParser p) b
+object :: NextParser p -> Parser (Element 'Object p)
+object cont = do
+  skipSpace
+  peekWord8' >>= \case
+    CLOSE_CURLY -> End cont <$ anyWord8
+    _ -> field cont
+
+restOfObject :: NextParser p -> Parser (Element 'Object p)
+restOfObject cont = do
+  skipSpace
+  anyWord8 >>= \case
+    CLOSE_CURLY -> pure (End cont)
+    COMMA -> skipSpace *> field cont
+    _ -> broken
+
+field :: NextParser p -> Parser (Element 'Object p)
+field cont =
+  Element <$> runAP A.jstring <*> (skipSpace *> word8 COLON *> nested (restOfObject cont))
 
 -- | Skip the rest of current value.  This is a no-op for atoms, and
 -- consumes the rest of the current object or array otherwise.
@@ -293,3 +368,54 @@ findElement' i p =
   findElement i p >>= \case
     Right r -> pure r
     Left _ -> fail $ "Didn't find the element at " ++ show i
+
+-- Fake, non-backtracking attoparsec subset
+
+withInput :: (ByteString -> AP.Result a) -> ByteString -> AP.Result a
+withInput f bs =
+  if BS.null bs
+  then AP.Fail "" [] "not enough input"
+  else f bs
+
+skipSpace :: Parser ()
+skipSpace = Parser cont
+  where
+    go bs =
+      let remainder = BS.dropWhile (\w -> w == 0x20 || w == 0x0a || w == 0x0d || w == 0x09) bs
+      in if BS.null remainder
+         then AP.Partial cont
+         else AP.Done remainder ()
+    cont bs =
+      if BS.null bs
+      then AP.Done bs ()
+      else go bs
+
+peekWord8' :: Parser Word8
+peekWord8' = Parser $ withInput go
+  where
+    go bs = AP.Done bs (BS.head bs)
+
+anyWord8 :: Parser Word8
+anyWord8 = Parser $ withInput go
+  where
+    go bs = AP.Done (BS.tail bs) (BS.head bs)
+
+word8 :: Word8 -> Parser Word8
+word8 w = Parser $ withInput go
+  where
+    go bs =
+      let w' = BS.head bs
+      in if w' == w
+         then AP.Done (BS.tail bs) w'
+         else AP.Fail bs [] "satisfy"
+
+string :: ByteString -> Parser ByteString
+string s = Parser $ withInput go
+  where
+    go bs =
+      if s `BS.isPrefixOf` bs
+      then AP.Done (BS.drop (BS.length s) bs) s
+      else AP.parse (AP.string s) bs
+
+runAP :: AP.Parser a -> Parser a
+runAP = Parser . AP.parse
