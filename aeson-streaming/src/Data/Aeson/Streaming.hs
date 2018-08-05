@@ -10,6 +10,7 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveFunctor #-}
 
 module Data.Aeson.Streaming (
   Path(..)
@@ -54,7 +55,9 @@ import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Attoparsec.ByteString as AP
 import qualified Data.Attoparsec.ByteString.Lazy as APL
 import qualified Data.HashMap.Strict as HM
+import Data.Functor
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Scientific (Scientific)
 import qualified Data.Vector as V
 import Data.Word (Word8)
@@ -76,7 +79,16 @@ import Data.Word (Word8)
 -- | A parser akin to an Attoparsec `AP.Parser`, but without
 -- backtracking capabilities, which allows it to discard its input as
 -- it is used.
-newtype Parser a = Parser (ByteString -> AP.Result a)
+newtype Parser a = Parser { unParser :: ParseFun a }
+                 deriving (Functor)
+
+type ParseFun a = [PathComponent] -> ByteString -> AP.Result ([PathComponent], a)
+
+askPath :: Parser [PathComponent]
+askPath = Parser $ \pcs bs -> AP.Done bs (pcs, pcs)
+
+setPath :: [PathComponent] -> Parser ()
+setPath pcs = Parser $ \_ bs -> AP.Done bs (pcs, ())
 
 data SomeParseResult = forall p. SomeParseResult (ParseResult p)
 
@@ -117,7 +129,7 @@ instance PathableIndex 'Array where
 
 -- | Apply a parser to a `ByteString` to start the parsing process.
 parse :: Parser a -> ByteString -> AP.Result a
-parse (Parser f) = f
+parse (Parser f) = fmap snd <$> f []
 {-# INLINE parse #-}
 
 -- | Apply a parser to a lazy `BSL.ByteString`.
@@ -130,34 +142,30 @@ parseL p = go (parse p) . BSL.toChunks
         convert bss (AP.Partial f') = go f' bss
         prepend bs bss = BSL.fromChunks (bs : bss)
 
-instance Functor Parser where
-  fmap f (Parser p) = Parser (fmap f . p)
-  {-# INLINE fmap #-}
-
 instance Applicative Parser where
-  pure a = Parser (flip AP.Done a)
-  Parser f <*> Parser r = Parser $ parseLoop result f
-    where
-      result f' = fmap f' . r
+  pure a = Parser $ \pc bs -> AP.Done bs (pc, a)
+  f <*> r = do -- TODO: rewrite this in non-monad terms
+    f' <- f
+    f' <$> r
   {-# INLINE (<*>) #-}
 
 instance Monad Parser where
-  (Parser f) >>= next = Parser $ parseLoop (parse . next) f
+  (Parser f) >>= next = Parser $ parseLoop (unParser . next) f
   {-# INLINE (>>=) #-}
   fail = Fail.fail
 
 instance Fail.MonadFail Parser where
-  fail err = Parser $ AP.parse (fail err)
+  fail err = Parser $ \ctx -> fixResult ctx . AP.parse (fail err)
 
-parseLoop :: (i -> ByteString -> AP.Result r) -> (ByteString -> AP.Result i) -> ByteString -> AP.Result r
-parseLoop result = go
+parseLoop :: forall i r. (i -> ParseFun r) -> ParseFun i -> ParseFun r
+parseLoop result initial ctx0 bs0 = step (initial ctx0 bs0)
   where
-    go f bs =
-      case f bs of
-        AP.Done leftover i | BS.null leftover -> AP.Partial (result i)
-                           | otherwise -> result i leftover
-        AP.Fail x y z -> AP.Fail x y z
-        AP.Partial f' -> AP.Partial (go f')
+    step :: AP.Result ([PathComponent], i) -> AP.Result ([PathComponent], r)
+    step (AP.Done leftover (ctx', i))
+      | BS.null leftover = AP.Partial (result i ctx')
+      | otherwise = result i ctx' leftover
+    step (AP.Fail x y z) = AP.Fail x y z
+    step (AP.Partial f') = AP.Partial (step . f')
 {-# INLINE parseLoop #-}
 
 -- | When parsing nested values, this type indicates whether a new
@@ -218,8 +226,12 @@ nested cont = do
   skipSpace
   peekWord8' >>= \case
     DOUBLE_QUOTE -> anyWord8 *> (StringResult cont <$> runAP A.jstring_)
-    OPEN_CURLY -> ObjectResult (object cont) <$ anyWord8
-    OPEN_SQUARE -> ArrayResult (array cont) <$ anyWord8
+    OPEN_CURLY -> do
+      path <- askPath
+      ObjectResult (setPath path >> object cont) <$ anyWord8
+    OPEN_SQUARE -> do
+      path <- askPath
+      ArrayResult (setPath path >> array cont) <$ anyWord8
     C_f -> BoolResult cont False <$ string "false"
     C_t -> BoolResult cont True <$ string "true"
     C_n -> NullResult cont <$ string "null"
@@ -234,14 +246,20 @@ array cont = do
   skipSpace
   peekWord8' >>= \case
     CLOSE_SQUARE -> End cont <$ anyWord8
-    _ -> Element 0 <$> nested (restOfArray 1 cont)
+    _ -> do
+      oldPath <- askPath
+      setPath (Offset 0 : oldPath)
+      Element 0 <$> nested (setPath oldPath >> restOfArray 1 cont)
 
 restOfArray :: Int -> NextParser p -> Parser (Element 'Array p)
 restOfArray !i cont = do
   skipSpace
-  anyWord8 >>= \case
-    CLOSE_SQUARE -> pure (End cont)
-    COMMA -> Element i <$> nested (restOfArray (i+1) cont)
+  peekWord8' >>= \case
+    CLOSE_SQUARE -> anyWord8 $> End cont
+    COMMA -> anyWord8 *> do
+      oldPath <- askPath
+      setPath (Offset i : oldPath)
+      Element i <$> nested (setPath oldPath >> restOfArray (i+1) cont)
     _ -> broken
 
 object :: NextParser p -> Parser (Element 'Object p)
@@ -254,14 +272,17 @@ object cont = do
 restOfObject :: NextParser p -> Parser (Element 'Object p)
 restOfObject cont = do
   skipSpace
-  anyWord8 >>= \case
-    CLOSE_CURLY -> pure (End cont)
-    COMMA -> skipSpace *> field cont
+  peekWord8' >>= \case
+    CLOSE_CURLY -> anyWord8 $> End cont
+    COMMA -> anyWord8 *> skipSpace *> field cont
     _ -> broken
 
 field :: NextParser p -> Parser (Element 'Object p)
-field cont =
-  Element <$> runAP A.jstring <*> (skipSpace *> word8 COLON *> nested (restOfObject cont))
+field cont = do
+  !f <- runAP A.jstring
+  oldPath <- askPath
+  setPath (Field f : oldPath)
+  Element f <$> (skipSpace *> word8 COLON *> nested (setPath oldPath >> restOfObject cont))
 
 -- | Skip the rest of current value.  This is a no-op for atoms, and
 -- consumes the rest of the current object or array otherwise.
@@ -371,51 +392,62 @@ findElement' i p =
 
 -- Fake, non-backtracking attoparsec subset
 
-withInput :: (ByteString -> AP.Result a) -> ByteString -> AP.Result a
-withInput f bs =
+withInput :: ParseFun a -> ParseFun a
+withInput f ctx bs =
   if BS.null bs
-  then AP.Fail "" [] "not enough input"
-  else f bs
+  then AP.Fail "" (contextify ctx) "not enough input"
+  else f ctx bs
 
 skipSpace :: Parser ()
 skipSpace = Parser cont
   where
-    go bs =
+    go ctx bs =
       let remainder = BS.dropWhile (\w -> w == 0x20 || w == 0x0a || w == 0x0d || w == 0x09) bs
       in if BS.null remainder
-         then AP.Partial cont
-         else AP.Done remainder ()
-    cont bs =
+         then AP.Partial (cont ctx)
+         else AP.Done remainder (ctx, ())
+    cont ctx bs =
       if BS.null bs
-      then AP.Done bs ()
-      else go bs
+      then AP.Done bs (ctx, ())
+      else go ctx bs
 
 peekWord8' :: Parser Word8
 peekWord8' = Parser $ withInput go
   where
-    go bs = AP.Done bs (BS.head bs)
+    go ctx bs = AP.Done bs (ctx, BS.head bs)
 
 anyWord8 :: Parser Word8
 anyWord8 = Parser $ withInput go
   where
-    go bs = AP.Done (BS.tail bs) (BS.head bs)
+    go ctx bs = AP.Done (BS.tail bs) (ctx, BS.head bs)
 
 word8 :: Word8 -> Parser Word8
 word8 w = Parser $ withInput go
   where
-    go bs =
+    go ctx bs =
       let w' = BS.head bs
       in if w' == w
-         then AP.Done (BS.tail bs) w'
-         else AP.Fail bs [] "satisfy"
+         then AP.Done (BS.tail bs) (ctx, w')
+         else AP.Fail bs (contextify ctx) "satisfy"
 
 string :: ByteString -> Parser ByteString
 string s = Parser $ withInput go
   where
-    go bs =
+    go ctx bs =
       if s `BS.isPrefixOf` bs
-      then AP.Done (BS.drop (BS.length s) bs) s
-      else AP.parse (AP.string s) bs
+      then AP.Done (BS.drop (BS.length s) bs) (ctx, s)
+      else fixResult ctx $ AP.parse (AP.string s) bs
 
 runAP :: AP.Parser a -> Parser a
-runAP = Parser . AP.parse
+runAP p = Parser $ \ctx bs -> fixResult ctx $ AP.parse p bs
+
+fixResult :: [PathComponent] -> AP.Result a -> AP.Result ([PathComponent], a)
+fixResult ctx (AP.Done bs a) = AP.Done bs (ctx, a)
+fixResult ctx (AP.Partial f) = AP.Partial (fixResult ctx . f)
+fixResult ctx (AP.Fail bs ctx' msg) = AP.Fail bs (contextify ctx ++ ctx') msg
+
+contextify :: [PathComponent] -> [String]
+contextify = map toStep . reverse
+  where
+    toStep (Offset i) = show i
+    toStep (Field f) = T.unpack f
