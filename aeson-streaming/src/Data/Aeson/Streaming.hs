@@ -51,6 +51,7 @@ import qualified Data.Aeson.Parser.Internal as A
 import Data.Aeson.Streaming.Paths (PathComponent(..), jpath)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Attoparsec.ByteString as AP
 import qualified Data.Attoparsec.ByteString.Lazy as APL
@@ -155,7 +156,7 @@ instance Monad Parser where
   fail = Fail.fail
 
 instance Fail.MonadFail Parser where
-  fail err = Parser $ \ctx -> fixResult ctx . AP.parse (fail err)
+  fail err = Parser $ \ctx bs -> AP.Fail bs (contextify ctx) ("Failed reading: " ++ err)
 
 parseLoop :: forall i r. (i -> ParseFun r) -> ParseFun i -> ParseFun r
 parseLoop result initial ctx0 bs0 = step (initial ctx0 bs0)
@@ -224,28 +225,25 @@ root = nested ()
 nested :: NextParser p -> Parser (ParseResult p)
 nested cont = do
   skipSpace
-  peekWord8' >>= \case
-    DOUBLE_QUOTE -> anyWord8 *> (StringResult cont <$> runAP A.jstring_)
+  peekWord8' "expecting datum" >>= \case
+    DOUBLE_QUOTE -> anyWord8 "" *> (StringResult cont <$> runAP "expecting string" A.jstring_)
     OPEN_CURLY -> do
       path <- askPath
-      ObjectResult (setPath path >> object cont) <$ anyWord8
+      ObjectResult (setPath path >> object cont) <$ anyWord8 ""
     OPEN_SQUARE -> do
       path <- askPath
-      ArrayResult (setPath path >> array cont) <$ anyWord8
+      ArrayResult (setPath path >> array cont) <$ anyWord8 ""
     C_f -> BoolResult cont False <$ string "false"
     C_t -> BoolResult cont True <$ string "true"
     C_n -> NullResult cont <$ string "null"
-    w | w >= C_0 && w <= C_9 || w == DASH -> NumberResult cont <$> runAP A.scientific
-    _ -> broken
-
-broken :: Parser a
-broken = fail "not a valid JSON value"
+    w | w >= C_0 && w <= C_9 || w == DASH -> NumberResult cont <$> runAP "expecting number" A.scientific
+    _ -> fail "expecting datum"
 
 array :: NextParser p -> Parser (Element 'Array p)
 array cont = do
   skipSpace
-  peekWord8' >>= \case
-    CLOSE_SQUARE -> End cont <$ anyWord8
+  peekWord8' "expecting datum or end of array" >>= \case
+    CLOSE_SQUARE -> End cont <$ anyWord8 ""
     _ -> do
       oldPath <- askPath
       setPath (Offset 0 : oldPath)
@@ -254,35 +252,35 @@ array cont = do
 restOfArray :: Int -> NextParser p -> Parser (Element 'Array p)
 restOfArray !i cont = do
   skipSpace
-  peekWord8' >>= \case
-    CLOSE_SQUARE -> anyWord8 $> End cont
-    COMMA -> anyWord8 *> do
+  peekWord8' "expecting comma or end of array" >>= \case
+    CLOSE_SQUARE -> anyWord8 "" $> End cont
+    COMMA -> anyWord8 "" *> do
       oldPath <- askPath
       setPath (Offset i : oldPath)
       Element i <$> nested (setPath oldPath >> restOfArray (i+1) cont)
-    _ -> broken
+    _ -> fail "expecting comma or end of array"
 
 object :: NextParser p -> Parser (Element 'Object p)
 object cont = do
   skipSpace
-  peekWord8' >>= \case
-    CLOSE_CURLY -> End cont <$ anyWord8
+  peekWord8' "expecting field or end of object" >>= \case
+    CLOSE_CURLY -> End cont <$ anyWord8 ""
     _ -> field cont
 
 restOfObject :: NextParser p -> Parser (Element 'Object p)
 restOfObject cont = do
   skipSpace
-  peekWord8' >>= \case
-    CLOSE_CURLY -> anyWord8 $> End cont
-    COMMA -> anyWord8 *> skipSpace *> field cont
-    _ -> broken
+  peekWord8' "expecting comma or end of object" >>= \case
+    CLOSE_CURLY -> End cont <$ anyWord8 ""
+    COMMA -> anyWord8 "" *> skipSpace *> field cont
+    _ -> fail "expecting comma or end of object"
 
 field :: NextParser p -> Parser (Element 'Object p)
 field cont = do
-  !f <- runAP A.jstring
+  !f <- runAP "expecting field name" A.jstring
   oldPath <- askPath
   setPath (Field f : oldPath)
-  Element f <$> (skipSpace *> word8 COLON *> nested (setPath oldPath >> restOfObject cont))
+  Element f <$> (skipSpace *> word8 "expecting colon" COLON *> nested (setPath oldPath >> restOfObject cont))
 
 -- | Skip the rest of current value.  This is a no-op for atoms, and
 -- consumes the rest of the current object or array otherwise.
@@ -392,10 +390,10 @@ findElement' i p =
 
 -- Fake, non-backtracking attoparsec subset
 
-withInput :: ParseFun a -> ParseFun a
-withInput f ctx bs =
+withInput :: String -> ParseFun a -> ParseFun a
+withInput failMsg f ctx bs =
   if BS.null bs
-  then AP.Fail "" (contextify ctx) "not enough input"
+  then AP.Fail "" (contextify ctx) (failMsg ++ ": not enough input")
   else f ctx bs
 
 skipSpace :: Parser ()
@@ -411,40 +409,40 @@ skipSpace = Parser cont
       then AP.Done bs (ctx, ())
       else go ctx bs
 
-peekWord8' :: Parser Word8
-peekWord8' = Parser $ withInput go
+peekWord8' :: String -> Parser Word8
+peekWord8' failMsg = Parser $ withInput failMsg go
   where
     go ctx bs = AP.Done bs (ctx, BS.head bs)
 
-anyWord8 :: Parser Word8
-anyWord8 = Parser $ withInput go
+anyWord8 :: String -> Parser Word8
+anyWord8 failMsg = Parser $ withInput failMsg go
   where
     go ctx bs = AP.Done (BS.tail bs) (ctx, BS.head bs)
 
-word8 :: Word8 -> Parser Word8
-word8 w = Parser $ withInput go
+word8 :: String -> Word8 -> Parser Word8
+word8 failMsg w = Parser $ withInput failMsg go
   where
     go ctx bs =
       let w' = BS.head bs
       in if w' == w
          then AP.Done (BS.tail bs) (ctx, w')
-         else AP.Fail bs (contextify ctx) "satisfy"
+         else AP.Fail bs (contextify ctx) failMsg
 
 string :: ByteString -> Parser ByteString
-string s = Parser $ withInput go
+string s = Parser $ withInput ("expecting " ++ BSC.unpack s) go
   where
     go ctx bs =
       if s `BS.isPrefixOf` bs
       then AP.Done (BS.drop (BS.length s) bs) (ctx, s)
-      else fixResult ctx $ AP.parse (AP.string s) bs
+      else fixResult ctx ("expecting " ++ BSC.unpack s) $ AP.parse (AP.string s) bs
 
-runAP :: AP.Parser a -> Parser a
-runAP p = Parser $ \ctx bs -> fixResult ctx $ AP.parse p bs
+runAP :: String -> AP.Parser a -> Parser a
+runAP failMsg p = Parser $ \ctx bs -> fixResult ctx failMsg $ AP.parse p bs
 
-fixResult :: [PathComponent] -> AP.Result a -> AP.Result ([PathComponent], a)
-fixResult ctx (AP.Done bs a) = AP.Done bs (ctx, a)
-fixResult ctx (AP.Partial f) = AP.Partial (fixResult ctx . f)
-fixResult ctx (AP.Fail bs ctx' msg) = AP.Fail bs (contextify ctx ++ ctx') msg
+fixResult :: [PathComponent] -> String -> AP.Result a -> AP.Result ([PathComponent], a)
+fixResult ctx _ (AP.Done bs a) = AP.Done bs (ctx, a)
+fixResult ctx failMsg (AP.Partial f) = AP.Partial (fixResult ctx failMsg . f)
+fixResult ctx failMsg (AP.Fail bs _ msg) = AP.Fail bs (contextify ctx) (failMsg ++ ": " ++ msg)
 
 contextify :: [PathComponent] -> [String]
 contextify = map toStep . reverse
