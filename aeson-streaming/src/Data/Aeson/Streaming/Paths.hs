@@ -18,6 +18,7 @@ import Language.Haskell.TH.Quote (QuasiQuoter(..))
 import Language.Haskell.TH.Syntax (Exp(..), Pat(..), Type(..), Lit(..))
 import Text.ParserCombinators.ReadP
 import Text.Read (readMaybe)
+import Data.String (fromString)
 
 -- $setup
 -- >>> :set -XQuasiQuotes
@@ -116,11 +117,11 @@ convertExp :: [PathComponent] -> Exp
 convertExp pcs = SigE (ListE $ map convertComponent pcs) (AppT ListT $ ConT ''PathComponent)
   where
     convertComponent (Offset i) = AppE (ConE 'Offset) (LitE . IntegerL $ fromIntegral i)
-    convertComponent (Field f) = AppE (ConE 'Field) (LitE . StringL $ T.unpack f)
+    convertComponent (Field f) = AppE (ConE 'Field) (AppE (VarE 'fromString) (LitE . StringL $ T.unpack f))
 
 convertPat :: [PathComponent] -> Pat
 convertPat pcs = ListP $ map convertComponent pcs
   where
     convertComponent (Offset i) = ConP 'Offset [LitP . IntegerL $ fromIntegral i]
-    convertComponent (Field f) = ConP 'Field [LitP . StringL $ T.unpack f]
+    convertComponent (Field f) = ConP 'Field [LitP . StringL $ T.unpack f] -- this requires that OverloadedStrings be on user-side, but meh ok
 
