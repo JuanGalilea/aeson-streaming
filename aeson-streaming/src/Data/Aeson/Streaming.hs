@@ -267,10 +267,9 @@ array cont = do
         setState State { sContext = "datum", sPath = Offset 0 : oldPath }
         r <- nested (setState State { sContext = ctx, sPath = oldPath } >> restOfArray 1 cont)
         case r of
-          ArrayResult _ -> pure ()
-          ObjectResult _ -> pure ()
-          _ -> setState State { sContext = ctx, sPath = oldPath }
-        pure r
+          ArrayResult _ -> pure r
+          ObjectResult _ -> pure r
+          _ -> setState State { sContext = ctx, sPath = oldPath } >> pure r
 
 restOfArray :: Int -> NextParser p -> Parser (Element 'Array p)
 restOfArray !i cont = do
