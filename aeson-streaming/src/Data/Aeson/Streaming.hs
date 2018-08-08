@@ -154,7 +154,7 @@ parseL p = go (parse p) . BSL.toChunks
 
 instance Applicative Parser where
   pure a = Parser $ \pc bs -> AP.Done bs (pc, a)
-  f <*> r = do -- TODO: rewrite this in non-monad terms
+  f <*> r = do
     f' <- f
     f' <$> r
   {-# INLINE (<*>) #-}
