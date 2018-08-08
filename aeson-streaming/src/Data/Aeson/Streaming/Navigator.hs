@@ -26,7 +26,9 @@ import Data.Aeson.Streaming
 
 -- | A quasiquoter that expands to a function which, given a
 -- `ParseResult` to start from, will navigate to a particular location
--- in a tree, preserving the memory of the path.
+-- in a tree, preserving the memory of the path.  The type of a
+-- `navigator` expression is @`ParseResult` p -> `Parser` (`ParseResult` q)@
+-- for some @q@ whose tail is ultimately @p@
 --
 -- >>> :t [navigator| .foo[0]["hello world"] |]
 -- [navigator| .foo[0]["hello world"] |]
