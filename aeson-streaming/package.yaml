@@ -16,6 +16,18 @@ library:
     - vector
   ghc-options: -Wall -Wincomplete-uni-patterns -Wpartial-fields -Wincomplete-record-updates -Wmissing-export-lists -Wcompat -O
 
+benchmarks:
+  criterion:
+    source-dirs: benchmark
+    main: Main.hs
+    dependencies:
+      - base
+      - aeson
+      - aeson-streaming
+      - attoparsec
+      - bytestring
+      - criterion
+
 tests:
   tasty:
     source-dirs: test
