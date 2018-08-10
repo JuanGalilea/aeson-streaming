@@ -41,6 +41,7 @@ module Data.Aeson.Streaming (
 , jpath
 ) where
 
+import Control.Monad
 import qualified Control.Monad.Fail as Fail
 import qualified Data.Aeson as A
 import qualified Data.Aeson.Streaming.Internal as S
@@ -248,21 +249,21 @@ parseRestOfArray = parseRestOfCompound (\_ v -> v) (V.fromList . reverse)
 -- together with `Just` the parse result at that point if the failure
 -- was due to a component being the wrong type or `Nothing` if it was
 -- due to the desired index not being there.
-navigateFromTo :: Parser (ParseResult p) -> [PathComponent] -> Parser (Either ([PathComponent], Maybe SomeParseResult) SomeParseResult)
-navigateFromTo startPoint startPath = go [] startPath =<< startPoint
+navigateFromTo :: [PathComponent] -> ParseResult p -> Parser (Either ([PathComponent], Maybe SomeParseResult) SomeParseResult)
+navigateFromTo = go []
   where
     go :: [PathComponent] -> [PathComponent] -> ParseResult p -> Parser (Either ([PathComponent], Maybe SomeParseResult) SomeParseResult)
     go _ [] r = pure . Right $ SomeParseResult r
-    go path (idx@(Offset i) : rest) (ArrayResult p') = continue (idx:path) rest =<< findElement i p'
-    go path (idx@(Field f) : rest) (ObjectResult p') = continue (idx:path) rest =<< findElement f p'
+    go path (idx@(Offset i) : rest) (ArrayResult p') = continue (idx:path) rest =<< findElement i =<< p'
+    go path (idx@(Field f) : rest) (ObjectResult p') = continue (idx:path) rest =<< findElement f =<< p'
     go path (idx : _) r = pure $ Left (reverse (idx : path), Just $ SomeParseResult r)
     continue path _ (Left _) = pure $ Left (reverse path, Nothing)
     continue path rest (Right r) = go path rest r
 
 -- | Like `navigateFromTo` but fails if the result can't be found
-navigateFromTo' :: Parser (ParseResult p) -> [PathComponent] -> Parser SomeParseResult
-navigateFromTo' startPoint startPath =
-  navigateFromTo startPoint startPath >>= \case
+navigateFromTo' :: [PathComponent] -> ParseResult p -> Parser SomeParseResult
+navigateFromTo' startPath startPoint =
+  navigateFromTo startPath startPoint >>= \case
     Right r -> pure r
     Left (pc, Nothing) -> fail $ "Didn't find element at " ++ show pc
     Left (pc, Just _) -> fail $ "Didn't find the right kind of element at " ++ show pc
@@ -271,24 +272,23 @@ navigateFromTo' startPoint startPath =
 -- the path taken to get there.  This is the same as `navigateFromTo`
 -- using `root` as the starting point.
 navigateTo :: [PathComponent] -> Parser (Either ([PathComponent], Maybe SomeParseResult) SomeParseResult)
-navigateTo = navigateFromTo root
+navigateTo path = navigateFromTo path =<< root
 
 -- | Like `navigateTo` but fails if the result can't be found
 navigateTo' :: [PathComponent] -> Parser SomeParseResult
-navigateTo' = navigateFromTo' root
+navigateTo' path = navigateFromTo' path =<< root
 
 -- | Find an element in the current compound item, returning either a
 -- parse result for the start of the found item or a parser for
 -- continuing to parse after the end of the compound.
-findElement :: (Eq (Index c)) => Index c -> Parser (Element c p) -> Parser (Either (NextParser p) (ParseResult ('In c p)))
-findElement i p =
-  p >>= \case
-    Element e r | e == i -> pure $ Right r
-                | otherwise -> findElement i =<< skipValue r
-    End p' -> pure (Left p')
+findElement :: (Eq (Index c)) => Index c -> Element c p -> Parser (Either (NextParser p) (ParseResult ('In c p)))
+findElement i (Element e r)
+  | e == i = pure $ Right r
+  | otherwise = findElement i =<< join (skipValue r)
+findElement _ (End p) = pure $ Left p
 
 -- | Like `findElement` but fails if the result can't be found
-findElement' :: (Show (Index c), Eq (Index c)) => Index c -> Parser (Element c p) -> Parser (ParseResult ('In c p))
+findElement' :: (Show (Index c), Eq (Index c)) => Index c -> Element c p -> Parser (ParseResult ('In c p))
 findElement' i p =
   findElement i p >>= \case
     Right r -> pure r

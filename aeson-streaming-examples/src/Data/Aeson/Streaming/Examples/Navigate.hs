@@ -50,8 +50,8 @@ navigate' = runMaybeT . start
 
     -- The current element is a compound; look for the given target
     -- element, or abort and result in Nothing if it's not there.
-    lookFor :: (Eq (Index c)) => Index c -> NextParser ('In c p) -> MaybeT Parser (ParseResult ('In c p))
+    lookFor :: (Eq (Index c)) => Index c -> Parser (Element c p) -> MaybeT Parser (ParseResult ('In c p))
     lookFor target parser =
-      lift (findElement target parser) >>= \case
+      lift (findElement target =<< parser) >>= \case
         Right p -> pure p
         Left _ -> fail "index not found"
