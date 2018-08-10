@@ -10,6 +10,7 @@ import qualified Data.Aeson as A
 import qualified Data.Aeson.Text as A
 import qualified Data.ByteString.Lazy as BSL
 import Data.Char
+import Data.String (fromString)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -116,8 +117,9 @@ convertExp :: [PathComponent] -> Exp
 convertExp pcs = SigE (ListE $ map convertComponent pcs) (AppT ListT $ ConT ''PathComponent)
   where
     convertComponent (Offset i) = AppE (ConE 'Offset) (LitE . IntegerL $ fromIntegral i)
-    convertComponent (Field f) = AppE (ConE 'Field) (LitE . StringL $ T.unpack f)
+    convertComponent (Field f) = AppE (ConE 'Field) (AppE (VarE 'fromString) (LitE . StringL $ T.unpack f))
 
+-- The pattern requires OverloadedStrings on the user-side, but meh ok
 convertPat :: [PathComponent] -> Pat
 convertPat pcs = ListP $ map convertComponent pcs
   where
