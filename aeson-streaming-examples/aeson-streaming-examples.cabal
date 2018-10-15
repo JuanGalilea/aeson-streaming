@@ -1,0 +1,37 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.30.0.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 22266647ecb41537980ba9a731bb82d086341a40e6eccbe6f7794a78981c2cdc
+
+name:           aeson-streaming-examples
+version:        0.0.0.0
+license:        PublicDomain
+build-type:     Simple
+
+executable aeson-streaming-examples
+  main-is: Main.hs
+  other-modules:
+      Data.Aeson.Streaming.Examples
+      Data.Aeson.Streaming.Examples.JsonExplode
+      Data.Aeson.Streaming.Examples.Navigate
+      Data.Aeson.Streaming.Examples.StringList
+      Data.Aeson.Streaming.Examples.Util
+      Paths_aeson_streaming_examples
+  hs-source-dirs:
+      src
+  ghc-options: -Wall -Wincomplete-uni-patterns -Wpartial-fields -Wincomplete-record-updates -Wmissing-export-lists -Wcompat -O -rtsopts
+  build-depends:
+      aeson
+    , aeson-streaming
+    , aeson-streaming-conduit
+    , base
+    , bytestring
+    , conduit
+    , containers
+    , dlist
+    , text
+    , transformers
+  default-language: Haskell2010

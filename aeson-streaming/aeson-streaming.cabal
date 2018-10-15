@@ -1,0 +1,96 @@
+cabal-version: 1.24
+
+-- This file has been generated from package.yaml by hpack version 0.30.0.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 6027cc962185710799d784413505a63a98e77a89ef3022667beed91f4b61b8ba
+
+name:           aeson-streaming
+version:        0.0.0.0
+license:        PublicDomain
+build-type:     Custom
+
+custom-setup
+  setup-depends:
+      Cabal
+    , base
+    , cabal-doctest
+
+library
+  exposed-modules:
+      Data.Aeson.Streaming
+      Data.Aeson.Streaming.Internal
+      Data.Aeson.Streaming.Navigator
+      Data.Aeson.Streaming.Paths
+  other-modules:
+      Paths_aeson_streaming
+  hs-source-dirs:
+      src
+  ghc-options: -Wall -Wincomplete-uni-patterns -Wpartial-fields -Wincomplete-record-updates -Wmissing-export-lists -Wcompat -O
+  build-depends:
+      aeson
+    , attoparsec
+    , base
+    , bytestring
+    , scientific
+    , template-haskell
+    , text
+    , unordered-containers
+    , vector
+  default-language: Haskell2010
+
+test-suite doctests
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  other-modules:
+      Paths_aeson_streaming
+  hs-source-dirs:
+      doctests
+  build-depends:
+      base
+    , doctest
+  default-language: Haskell2010
+
+test-suite tasty
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  other-modules:
+      Data.Aeson.Streaming.Tests
+      Data.Aeson.Streaming.Tests.AesonCompatibility
+      Data.Aeson.Streaming.Tests.Navigation
+      Data.Aeson.Streaming.Tests.Paths
+      Data.Aeson.Streaming.Tests.Utils
+      Paths_aeson_streaming
+  hs-source-dirs:
+      test
+  build-depends:
+      aeson
+    , aeson-streaming
+    , attoparsec
+    , base
+    , bytestring
+    , hedgehog
+    , scientific
+    , tasty
+    , tasty-hedgehog
+    , tasty-hunit
+    , unordered-containers
+    , vector
+  default-language: Haskell2010
+
+benchmark criterion
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  other-modules:
+      Paths_aeson_streaming
+  hs-source-dirs:
+      benchmark
+  build-depends:
+      aeson
+    , aeson-streaming
+    , attoparsec
+    , base
+    , bytestring
+    , criterion
+  default-language: Haskell2010
