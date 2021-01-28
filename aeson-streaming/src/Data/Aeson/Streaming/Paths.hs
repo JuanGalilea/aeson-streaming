@@ -105,11 +105,11 @@ parsePath = nonEmpty +++ empty
 jpath :: QuasiQuoter
 jpath = QuasiQuoter { quoteExp = convert convertExp
                     , quotePat = convert convertPat
-                    , quoteType = const $ fail "invalid type"
-                    , quoteDec = const $ fail "invalid declaration"
+                    , quoteType = const $ error "invalid type"
+                    , quoteDec = const $ error "invalid declaration"
                     }
   where
-    convert converter = maybe (fail "invalid path") (pure . converter) . extractPath
+    convert converter = maybe (error "invalid path") (pure . converter) . extractPath
     -- we'll allow spaces on the ends for readability
     extractPath = readMaybe . T.unpack . T.strip . T.pack
 

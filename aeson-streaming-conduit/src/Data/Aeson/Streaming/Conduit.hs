@@ -112,7 +112,7 @@ yieldArrayElementsAt path = do
   SomeArrayParser arrayParser <- sinkParser' $
     navigateTo' path >>= \case
       SomeParseResult (ArrayResult p) -> pure $ SomeArrayParser p
-      _ -> fail $ "Expected array at " ++ show path
+      _ -> error $ "Expected array at " ++ show path
   void $ yieldElements arrayParser
 
 -- | Navigate to an object and produce the elements therein together
@@ -133,7 +133,7 @@ yieldObjectFieldsAt path = do
   SomeObjectParser objectParser <- sinkParser' $
     navigateTo' path >>= \case
       SomeParseResult (ObjectResult p) -> pure $ SomeObjectParser p
-      _ -> fail $ "Expected object at " ++ show path
+      _ -> error $ "Expected object at " ++ show path
   void $ yieldEntries objectParser
 
 -- | An attoparsec `Fail`ure as an exception

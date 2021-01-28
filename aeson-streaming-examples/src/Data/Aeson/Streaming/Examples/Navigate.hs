@@ -46,7 +46,7 @@ navigate' = runMaybeT . start
     step _ _ =
       -- We didn't find the type of thing we wanted along the path, so
       -- produce Nothing.
-      fail "path mismatch"
+      error "path mismatch"
 
     -- The current element is a compound; look for the given target
     -- element, or abort and result in Nothing if it's not there.
@@ -54,4 +54,4 @@ navigate' = runMaybeT . start
     lookFor target parser =
       lift (findElement target =<< parser) >>= \case
         Right p -> pure p
-        Left _ -> fail "index not found"
+        Left _ -> error "index not found"

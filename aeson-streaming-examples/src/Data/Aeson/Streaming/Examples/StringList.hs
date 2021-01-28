@@ -17,7 +17,7 @@ stringArray :: (MonadThrow m)
 stringArray =
   sinkParser' root >>= \case
     ArrayResult parser -> stringElements parser
-    _ -> fail "input wasn't an array"
+    _ -> error "input wasn't an array"
 
 -- This will yield each string in the array at the current level, and
 -- returning a parser for continuing to read after the end of the
@@ -33,6 +33,6 @@ stringElements parser =
         yield element
         stringElements nextParser
     Element _ _ ->
-      fail "found a non-string in the array"
+      error "found a non-string in the array"
     End nextParser ->
       return nextParser

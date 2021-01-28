@@ -112,7 +112,7 @@ root :: Parser (ParseResult 'Root)
 root = nested ()
 
 broken :: Parser a
-broken = fail "not a valid json value"
+broken = error "not a valid json value"
 
 nested :: NextParser p -> Parser (ParseResult p)
 nested cont = do

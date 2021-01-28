@@ -42,23 +42,23 @@ import Data.Aeson.Streaming
 -- p' :: Parser (Element 'Object ('In 'Array ('In 'Object 'Root)))
 navigator :: QuasiQuoter
 navigator = QuasiQuoter { quoteExp = convert convertPath
-                        , quotePat = const $ fail "invalid pattern"
-                        , quoteType = const $ fail "invalid type"
-                        , quoteDec = const $ fail "invalid declaration"
+                        , quotePat = const $ error "invalid pattern"
+                        , quoteType = const $ error "invalid type"
+                        , quoteDec = const $ error "invalid declaration"
                         }
   where
-    convert converter = maybe (fail "invalid path") converter . extractPath
+    convert converter = maybe (error "invalid path") converter . extractPath
     -- we'll allow spaces on the ends for readability
     extractPath = readMaybe . T.unpack . T.strip . T.pack
 
 requireArray :: ParseResult p -> Parser (Element 'Array p)
 requireArray (ArrayResult p) = p
-requireArray _ = fail "expected array"
+requireArray _ = error "expected array"
 {-# INLINE requireArray #-}
 
 requireObject :: ParseResult p -> Parser (Element 'Object p)
 requireObject (ObjectResult p) = p
-requireObject _ = fail "expected object"
+requireObject _ = error "expected object"
 {-# INLINE requireObject #-}
 
 -- Just forces the type to be right even in the empty-path case

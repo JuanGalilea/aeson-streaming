@@ -100,10 +100,10 @@ instance Applicative Parser where
 
 instance Monad Parser where
   (Parser f) >>= next = Parser $ parseLoop (parse . next) f
-  fail = Fail.fail
+  -- fail = Fail.fail
 
-instance Fail.MonadFail Parser where
-  fail err = Parser $ AP.parse (fail err)
+-- instance Fail.MonadFail Parser where
+--   fail err = Parser $ AP.parse (fail err)
 
 parseLoop :: (i -> ByteString -> AP.Result r) -> (ByteString -> AP.Result i) -> ByteString -> AP.Result r
 parseLoop result = go
@@ -222,7 +222,7 @@ decodeValue' :: (A.FromJSON a) => ParseResult p -> Parser (NextParser p, a)
 decodeValue' p =
   decodeValue p >>= \case
     (p', A.Success v) -> pure (p', v)
-    (_, A.Error s) -> fail s
+    (_, A.Error s) -> error s
 
 parseRestOfCompound :: (Index c -> A.Value -> e) -> ([e] -> r) -> Parser (Element c p) -> Parser (NextParser p, r)
 parseRestOfCompound interest complete p0 = go p0 []
@@ -265,8 +265,8 @@ navigateFromTo' :: [PathComponent] -> ParseResult p -> Parser SomeParseResult
 navigateFromTo' startPath startPoint =
   navigateFromTo startPath startPoint >>= \case
     Right r -> pure r
-    Left (pc, Nothing) -> fail $ "Didn't find element at " ++ show pc
-    Left (pc, Just _) -> fail $ "Didn't find the right kind of element at " ++ show pc
+    Left (pc, Nothing) -> error $ "Didn't find element at " ++ show pc
+    Left (pc, Just _) -> error $ "Didn't find the right kind of element at " ++ show pc
 
 -- | Navigate to a particular point in the input object, forgetting
 -- the path taken to get there.  This is the same as `navigateFromTo`
@@ -292,4 +292,4 @@ findElement' :: (Show (Index c), Eq (Index c)) => Index c -> Element c p -> Pars
 findElement' i p =
   findElement i p >>= \case
     Right r -> pure r
-    Left _ -> fail $ "Didn't find the element at " ++ show i
+    Left _ -> error $ "Didn't find the element at " ++ show i
