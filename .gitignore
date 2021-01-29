@@ -1,5 +1,5 @@
 /.stack-work/
 /*/TAGS
 /*/.stack-work/
-/*/*.cabal
 /.dir-locals.el
+*.lock

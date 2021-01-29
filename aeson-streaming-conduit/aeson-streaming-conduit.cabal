@@ -1,0 +1,48 @@
+cabal-version: 1.24
+
+-- This file has been generated from package.yaml by hpack version 0.33.0.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 8cd343b0047ec1f5582af24c183732751b2c683cb4dfab4b47b24d729685b5ee
+
+name:           aeson-streaming-conduit
+version:        0.0.0.0
+license:        PublicDomain
+build-type:     Custom
+
+custom-setup
+  setup-depends:
+      Cabal
+    , base
+    , cabal-doctest
+
+library
+  exposed-modules:
+      Data.Aeson.Streaming.Conduit
+  other-modules:
+      Paths_aeson_streaming_conduit
+  hs-source-dirs:
+      src
+  ghc-options: -Wall -Wincomplete-uni-patterns -Wpartial-fields -Wincomplete-record-updates -Wmissing-export-lists -Wcompat -O
+  build-depends:
+      aeson
+    , aeson-streaming
+    , attoparsec
+    , base
+    , bytestring
+    , conduit
+    , text
+  default-language: Haskell2010
+
+test-suite doctests
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  other-modules:
+      Paths_aeson_streaming_conduit
+  hs-source-dirs:
+      doctests
+  build-depends:
+      base
+    , doctest
+  default-language: Haskell2010
